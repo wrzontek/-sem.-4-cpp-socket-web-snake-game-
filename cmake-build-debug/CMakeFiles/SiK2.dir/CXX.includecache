@@ -9,8 +9,6 @@
 /cygdrive/c/Users/Adrian/CLionProjects/SiK2/main.cpp
 iostream
 -
-filesystem
--
 sys/socket.h
 -
 netinet/in.h
@@ -21,9 +19,7 @@ fstream
 -
 vector
 -
-regex
--
-set
+string
 -
 fcntl.h
 -
@@ -31,6 +27,6 @@ cstdarg
 -
 getopt.h
 -
-err.h
-/cygdrive/c/Users/Adrian/CLionProjects/SiK2/err.h
+cstring
+-
 
