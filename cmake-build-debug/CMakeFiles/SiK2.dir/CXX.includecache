@@ -1,0 +1,36 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/cygdrive/c/Users/Adrian/CLionProjects/SiK2/main.cpp
+iostream
+-
+filesystem
+-
+sys/socket.h
+-
+netinet/in.h
+-
+unistd.h
+-
+fstream
+-
+vector
+-
+regex
+-
+set
+-
+fcntl.h
+-
+cstdarg
+-
+getopt.h
+-
+err.h
+/cygdrive/c/Users/Adrian/CLionProjects/SiK2/err.h
+
