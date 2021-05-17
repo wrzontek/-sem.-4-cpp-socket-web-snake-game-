@@ -11,6 +11,7 @@
 #include <cstring>
 #include <map>
 #include <algorithm>
+#include <cmath>
 
 #define MAX_PLAYERS 25
 #define DEFAULT_PORT 2021
@@ -20,6 +21,9 @@
 #define DEFAULT_BOARD_HEIGHT 480
 #define NOT_EATEN false
 #define EATEN true
+#define TURN_RIGHT 1
+#define TURN_LEFT 2
+
 
 namespace {
 
@@ -43,9 +47,14 @@ namespace {
         exit(EXIT_FAILURE);
     }
 
+    inline double degree_to_radian(double d) {
+        return (d / 180.0) * ((double) M_PI);
+    }
+
     int32_t get_random() {
+        int32_t result = (int32_t)my_rand;
         my_rand = (my_rand * 279410273) % 4294967291;
-        return (int32_t)my_rand;
+        return result;
     }
 
     struct worm_info {
@@ -66,7 +75,7 @@ namespace {
     void init_game(uint32_t &game_id, std::vector<std::string> &players,
                    std::map<std::string, worm_info> &player_worms,
                    std::vector<bool> &board) {
-        game_id = my_rand;
+        game_id = get_random();
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
 
@@ -74,13 +83,14 @@ namespace {
         std::sort(players.begin(), players.end()); // porządkujemy alfabetycznie
 
         for (std::string &player : players) {
-            double x = player_worms[player].x = get_random() + 0.5;
-            double y = player_worms[player].y = get_random() + 0.5;
+            double x = (player_worms[player].x = get_random() + 0.5);
+            double y = (player_worms[player].y = get_random() + 0.5);
             player_worms[player].direction = get_random() % 360;
-            if (board[y * board_width + x]) {
+            if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                 // todo PLAYER_ELIMINATED
             }
             else {
+                board[y * board_width + x] = EATEN;
                 // todo PIXEL
             }
         }
@@ -89,16 +99,31 @@ namespace {
     void do_turn(uint32_t &game_id, std::vector<std::string> &players,
                  std::map<std::string, worm_info> &player_worms,
                  std::map<std::string, uint8_t> &turn_direction,
-                std::vector<bool> &board) {
+                 std::vector<bool> &board) {
+
         for (std::string &player : players) {
-            if (turn_direction[player] == 1)
+            if (turn_direction[player] == TURN_RIGHT)
                 player_worms[player].direction += turning_speed;
-            else if (turn_direction[player] == 2)
+            else if (turn_direction[player] == TURN_LEFT)
                 player_worms[player].direction -= turning_speed;
 
-            // todo przesunąć robala o 1 w direction
+            double old_x = player_worms[player].x;
+            double old_y = player_worms[player].y;
 
+            double direction = degree_to_radian(player_worms[player].direction);
+            double x = (player_worms[player].x += std::cos(direction));
+            double y = (player_worms[player].y += std::sin(direction));
 
+            if (x == old_x && y == old_y)
+                continue;
+
+            if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
+                // todo PLAYER_ELIMINATED
+            }
+            else {
+                board[y * board_width + x] = EATEN;
+                // todo PIXEL
+            }
         }
     }
 
@@ -108,6 +133,8 @@ namespace {
 
 // czy jest jakiś ładny sposób na oddzielenie player_name jednego komunikatu od session_id kolejnego? Albo raczej przeczytanie dokładnie jednego datagramu, bo te mogę mieć różne długości
 int main(int argc, char *argv[]) {
+    //std::cout << std::sin(degree_to_radian(0)) << " " << std::cos(degree_to_radian(0)) << std::endl;
+    //std::cout << std::sin(degree_to_radian(90)) << " " << std::cos(degree_to_radian(90)) << std::endl;
 
     port = DEFAULT_PORT;
     turning_speed = DEFAULT_TURNING_SPEED;
@@ -149,7 +176,7 @@ int main(int argc, char *argv[]) {
     std::vector<bool> board;
     board.resize(board_width * board_height);
 
-    init_game(game_id, worm_info, board);
+    init_game(game_id, players, player_worms, board);
 
     return 123;
 }
