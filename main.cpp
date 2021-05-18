@@ -79,12 +79,15 @@ namespace {
         return result;
     }
 
-    struct
-
-    struct worm_info {
+    struct player_info {
+        uint64_t id;
+        bool ready;
+        bool in_game;
         double x;
         double y;
         int16_t direction;
+        uint8_t turn_direction;
+        // address do wysyłania
     };
 
     struct __attribute__((__packed__)) client_msg {
@@ -164,8 +167,7 @@ namespace {
         }
     }
 
-    void init_game(uint32_t &game_id, std::set<std::string> &players,
-                   std::map<std::string, worm_info> &player_worms,
+    void init_game(uint32_t &game_id, std::map<std::string, player_info> &players,
                    std::vector<bool> &board) {
         game_id = get_random();
         for (int i = 0; i < board.size(); i++)
@@ -173,10 +175,11 @@ namespace {
 
         // todo NEW_GAME wysłać wszystkim
 
-        for (const std::string& player : players) {
-            double x = (player_worms[player].x = get_random() + 0.5);
-            double y = (player_worms[player].y = get_random() + 0.5);
-            player_worms[player].direction = get_random() % 360;
+        for (auto &pair: players) {
+            player_info &player = pair.second;
+            double x = (player.x = get_random() + 0.5);
+            double y = (player.y = get_random() + 0.5);
+            player.direction = get_random() % 360;
             if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                 // todo PLAYER_ELIMINATED wysłać wszystkim
             }
@@ -187,24 +190,23 @@ namespace {
         }
     }
 
-    void do_turn(uint32_t &game_id, std::set<std::string> &players,
-                 std::map<std::string, worm_info> &player_worms,
-                 std::map<std::string, uint8_t> &turn_direction,
+    void do_turn(uint32_t &game_id, std::map<std::string, player_info> &players,
                  std::vector<bool> &board) {
 
-        for (const std::string& player : players) {
-            if (player_worms.find(player) != player_worms.end()) {
-                if (turn_direction[player] == TURN_RIGHT)
-                    player_worms[player].direction += turning_speed;
-                else if (turn_direction[player] == TURN_LEFT)
-                    player_worms[player].direction -= turning_speed;
+        for (auto &pair: players) {
+            player_info &player = pair.second;
+            if (player.in_game) {
+                if (player.turn_direction == TURN_RIGHT)
+                    player.direction += turning_speed;
+                else if (player.turn_direction == TURN_LEFT)
+                    player.direction -= turning_speed;
 
-                double old_x = player_worms[player].x;
-                double old_y = player_worms[player].y;
+                double old_x = player.x;
+                double old_y = player.y;
 
-                double direction = degree_to_radian(player_worms[player].direction);
-                double x = (player_worms[player].x += std::cos(direction));
-                double y = (player_worms[player].y += std::sin(direction));
+                double direction = degree_to_radian(player.direction);
+                double x = (player.x += std::cos(direction));
+                double y = (player.y += std::sin(direction));
 
                 if (x == old_x && y == old_y)
                     continue;
@@ -238,12 +240,10 @@ int main(int argc, char *argv[]) {
     get_args(argc, argv);
     
     uint32_t game_id;
-    std::set<std::string> player_names;
-    std::set<std::string> ready_players = 0;
+    std::map<std::string, player_info> players; // mapujemy nazwę do informacji
+    int ready_players = 0;
     std::set<uint64_t> observer_ids;
     std::set<uint64_t> player_ids;
-    std::map<std::string, worm_info> player_worms;
-    std::map<std::string, uint8_t> turn_direction;
     std::vector<bool> board;
     board.resize(board_width * board_height);
     std::vector<std::variant<event_newgame, event_pixel, event_player_eliminated, event_gameover>> game_events;
@@ -336,11 +336,15 @@ int main(int argc, char *argv[]) {
                         continue;   // jeżeli error to trudno, żyje się dalej
                     if (ret == 0)
                         break;
-                    bool invalid_msg = false;
+
+                    if (in_msg.turn_direction > 2)
+                        continue;
+
                     in_msg.session_id = be64toh(in_msg.session_id);
-                    in_msg.next_expected_event_no = ntohl(in_msg.next_expected_event_no);
+                    in_msg.next_expected_event_no = be32toh(in_msg.next_expected_event_no);
 
                     std::string name;
+                    bool invalid_msg = false;
                     for (int i = 0; i < ret - 13; i++) {
                         char c = in_msg.player_name[i];
                         if (c < 33 || c > 126) {
@@ -361,18 +365,40 @@ int main(int argc, char *argv[]) {
                         }
                         else {
                             /* stary obserwator */
-                            // todo updejt timera komunikacji
+                            // todo updejt timera komunikacji, wysyłamy brakującą historię (od expected event)
                         }
                     }
 
-                    if (player_names.find(name) == player_names.end()) {
+                    if (players.find(name) == players.end()) {
                         /* nieznany gracz */
                         if (player_ids.find(in_msg.session_id) != player_ids.end())
                             continue;   // ignorujemy, znana sesja nie może ot tak zmienić nazwy gracza
 
-                        // todo dodajemy gracza
                         player_ids.insert(in_msg.session_id);
-                        player_names.insert(name);
+                        player_info new_player_info{in_msg.session_id, false,
+                                                    false,0,0,0};
+                        new_player_info.turn_direction = in_msg.turn_direction;
+                        if (new_player_info.turn_direction != 0) {
+                            new_player_info.ready = true;
+                            ready_players++;
+                        }
+                        players.insert(std::pair(name, new_player_info));
+
+                        // todo wysyłamy mu historię, tworzymy timer
+                    } else {
+                        /* znany gracz */
+                        player_info &player = players[name];
+                        if (in_msg.session_id < player.id)
+                            continue;
+                        else
+                            player.id = in_msg.session_id;
+
+                        player.turn_direction = in_msg.turn_direction;
+                        if (!player.ready && player.turn_direction != 0) {
+                            player.ready = true;
+                            ready_players++;
+                        }
+                        // todo uaktualniamy jego timer, wysyłamy brakującą historię (od expected event)
                     }
                 }
             }
@@ -384,7 +410,7 @@ int main(int argc, char *argv[]) {
                 uint64_t exp;
                 read(client[1].fd, &exp, sizeof(uint64_t));
 
-                do_turn(game_id, player_names, player_worms, turn_direction, board);
+                do_turn(game_id, players, board);
             }
 
             // todo iteracja po timerach graczy
@@ -395,6 +421,6 @@ int main(int argc, char *argv[]) {
 
 
 
-    //init_game(game_id, player_names, player_worms, board);
+    //init_game(game_id, players, player_worms, board);
     return 123;
 };
