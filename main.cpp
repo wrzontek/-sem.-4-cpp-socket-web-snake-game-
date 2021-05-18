@@ -12,6 +12,8 @@
 #include <map>
 #include <algorithm>
 #include <cmath>
+#include <poll.h>
+#include <variant>
 
 #define MAX_PLAYERS 25
 #define DEFAULT_PORT 2021
@@ -23,10 +25,11 @@
 #define EATEN true
 #define TURN_RIGHT 1
 #define TURN_LEFT 2
+#define NAME_LEN_MAX 20
+#define CLIENT_MAX (2 + 2 * MAX_PLAYERS)
 
 
 namespace {
-
     int64_t my_rand;
     int port, turning_speed, rounds_per_sec, board_width, board_height;
 
@@ -47,6 +50,22 @@ namespace {
         exit(EXIT_FAILURE);
     }
 
+    /* funkcja fatal z laboratoriów */
+    void fatal(const char *fmt, ...)
+    {
+        va_list fmt_args;
+
+        fprintf(stderr, "ERROR: ");
+
+        va_start(fmt_args, fmt);
+        vfprintf(stderr, fmt, fmt_args);
+        va_end (fmt_args);
+
+        fprintf(stderr,"\n");
+        exit(EXIT_FAILURE);
+    }
+
+    /* https://stackoverflow.com/questions/31502120/sin-and-cos-give-unexpected-results-for-well-known-angles */
     inline double degree_to_radian(double d) {
         return (d / 180.0) * ((double) M_PI);
     }
@@ -67,10 +86,78 @@ namespace {
         uint64_t session_id;
         uint8_t number;
         uint32_t next_expected_event_no;
-        uint8_t player_name[20];
+        uint8_t player_name[NAME_LEN_MAX];
     };
 
+    struct __attribute__((__packed__)) event_newgame {
+        uint32_t len;
+        uint32_t event_no;
+        uint8_t event_type;
 
+        uint32_t maxx;
+        uint32_t maxy;
+        uint8_t player_list[(NAME_LEN_MAX + 1) * MAX_PLAYERS];
+
+        uint32_t crc32;
+    };
+
+    struct __attribute__((__packed__)) event_pixel {
+        uint32_t len;
+        uint32_t event_no;
+        uint8_t event_type;
+
+        uint8_t player_number;
+        uint32_t x;
+        uint32_t y;
+
+        uint32_t crc32;
+    };
+
+    struct __attribute__((__packed__)) event_player_eliminated {
+        uint32_t len;
+        uint32_t event_no;
+        uint8_t event_type;
+
+        uint8_t player_number;
+
+        uint32_t crc32;
+    };
+
+    struct __attribute__((__packed__)) event_gameover {
+        uint32_t len;
+        uint32_t event_no;
+        uint8_t event_type;
+
+        uint32_t crc32;
+    };
+
+    void get_args(int argc, char *argv[]) {
+        int opt;
+        while ((opt = getopt(argc, argv, "p:s:t:v:w:h:")) != -1) {
+            switch (opt) {
+                case 'p':
+                    port = atoi(optarg);
+                    break;
+                case 's':
+                    my_rand = atoi(optarg);
+                    break;
+                case 't':
+                    turning_speed = atoi(optarg);
+                    break;
+                case 'v':
+                    rounds_per_sec = atoi(optarg);
+                    break;
+                case 'w':
+                    board_width = atoi(optarg);
+                    break;
+                case 'h':
+                    board_height = atoi(optarg);
+                    break;
+                default:
+                    fatal("Usage: %s [-p n] [-s n] [-t n] [-v n] [-w n] [-h n]\n");
+            }
+        }
+    }
 
     void init_game(uint32_t &game_id, std::vector<std::string> &players,
                    std::map<std::string, worm_info> &player_worms,
@@ -143,40 +230,37 @@ int main(int argc, char *argv[]) {
     board_height = DEFAULT_BOARD_HEIGHT;
     my_rand = time(NULL);
 
-    int opt;
-    while ((opt = getopt(argc, argv, "p:s:t:v:w:h:")) != -1) {
-        switch (opt) {
-            case 'p':
-                port = atoi(optarg);
-                break;
-            case 's':
-                my_rand = atoi(optarg);
-                break;
-            case 't':
-                turning_speed = atoi(optarg);
-                break;
-            case 'v':
-                rounds_per_sec = atoi(optarg);
-                break;
-            case 'w':
-                board_width = atoi(optarg);
-                break;
-            case 'h':
-                board_height = atoi(optarg);
-                break;
-            default:
-                syserr("Usage: %s [-p n] [-s n] [-t n] [-v n] [-w n] [-h n]\n");
-        }
-    }
-
+    get_args(argc, argv);
+    
     uint32_t game_id;
     std::vector<std::string> players;
     std::map<std::string, worm_info> player_worms;
     std::map<std::string, uint8_t> turn_direction;
     std::vector<bool> board;
     board.resize(board_width * board_height);
+    std::vector<std::variant<event_newgame, event_pixel, event_player_eliminated, event_gameover>> game_events;
 
-    init_game(game_id, players, player_worms, board);
+    /*
+     * client[0] na obsługę nowych połączeń
+     * client[1] na timer rundy
+     * client[2k] na gracza, do odbierania jego komunikatów
+     * client[2k+1] na timer gracza 2k, do kontroli czy nie przekroczył 2 sekund
+     * maksymalnie 2 + 2 * MAX_PLAYERS klientów
+    */
+
+    pollfd client[CLIENT_MAX];
+    sockaddr_in server;
+    int ready_players = 0;
+    for (int i = 0; i < CLIENT_MAX; i++) {
+        client[i].fd = -1;
+        client[i].events = POLLIN;
+        client[i].revents = 0;
+    }
+
+
+
+    //init_game(game_id, players, player_worms, board);
+
 
     return 123;
-}
+};
