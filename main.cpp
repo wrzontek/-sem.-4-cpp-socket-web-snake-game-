@@ -55,8 +55,7 @@ namespace {
     }
 
     /* funkcja fatal z laboratoriów */
-    void fatal(const char *fmt, ...)
-    {
+    void fatal(const char *fmt, ...) {
         va_list fmt_args;
 
         fprintf(stderr, "ERROR: ");
@@ -65,7 +64,7 @@ namespace {
         vfprintf(stderr, fmt, fmt_args);
         va_end (fmt_args);
 
-        fprintf(stderr,"\n");
+        fprintf(stderr, "\n");
         exit(EXIT_FAILURE);
     }
 
@@ -75,7 +74,7 @@ namespace {
     }
 
     int32_t get_random() {
-        int32_t result = (int32_t)my_rand;
+        int32_t result = (int32_t) my_rand;
         my_rand = (my_rand * 279410273) % 4294967291;
         return result;
     }
@@ -100,7 +99,7 @@ namespace {
         uint8_t player_name[NAME_LEN_MAX];
     };
 
-    struct __attribute__((__packed__)) event_newgame {
+    struct __attribute__((__packed__)) event_new_game {
         uint32_t len;
         uint32_t event_no;
         uint8_t event_type;
@@ -134,7 +133,7 @@ namespace {
         uint32_t crc32;
     };
 
-    struct __attribute__((__packed__)) event_gameover {
+    struct __attribute__((__packed__)) event_game_over {
         uint32_t len;
         uint32_t event_no;
         uint8_t event_type;
@@ -172,7 +171,7 @@ namespace {
 
     void init_game(uint32_t &game_id, std::map<std::string, player_info> &players,
                    std::vector<bool> &board,
-                   std::vector<std::variant<event_newgame, event_pixel, event_player_eliminated, event_gameover>> &game_events) {
+                   std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
         game_id = get_random();
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
@@ -190,8 +189,7 @@ namespace {
             if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                 // todo PLAYER_ELIMINATED wysłać wszystkim (poza disconnected)
                 // todo sprawdzić czy jest koniec gry
-            }
-            else {
+            } else {
                 board[y * board_width + x] = EATEN;
                 // todo PIXEL wysłać wszystkim (poza disconnected)
             }
@@ -200,7 +198,7 @@ namespace {
 
     void do_turn(uint32_t &game_id, std::map<std::string, player_info> &players,
                  std::vector<bool> &board,
-                 std::vector<std::variant<event_newgame, event_pixel, event_player_eliminated, event_gameover>> &game_events,
+                 std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events,
                  bool &game_in_progess) {
 
         for (auto &pair: players) {
@@ -224,7 +222,7 @@ namespace {
                 if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                     // todo PLAYER_ELIMINATED wysłać wszystkim (poza disconnected)
                     // todo sprawdzić czy jest koniec gry
-                        // game_in_progess = false;
+                    // game_in_progess = false;
                 } else {
                     board[y * board_width + x] = EATEN;
                     // todo PIXEL wysłać wszystkim (poza disconnected)
@@ -244,8 +242,7 @@ namespace {
             new_value.it_value.tv_nsec = now.tv_nsec;
             new_value.it_interval.tv_sec = 1;
             new_value.it_interval.tv_nsec = 1000000000 / rounds_per_sec;
-        }
-        else {
+        } else {
             new_value.it_value.tv_sec = now.tv_sec + CLIENT_TIMEOUT_SECONDS;
             new_value.it_value.tv_nsec = now.tv_nsec;
             new_value.it_interval.tv_sec = CLIENT_TIMEOUT_SECONDS;
@@ -260,8 +257,29 @@ namespace {
             syserr("timerfd_settime");
     }
 
-}
+    void update_timer(pollfd &client) {
 
+        itimerspec new_value{};
+        timespec now{};
+        if (clock_gettime(CLOCK_REALTIME, &now) == -1)
+            syserr("clock_gettime");
+
+        new_value.it_value.tv_sec = now.tv_sec + CLIENT_TIMEOUT_SECONDS;
+        new_value.it_value.tv_nsec = now.tv_nsec;
+        new_value.it_interval.tv_sec = CLIENT_TIMEOUT_SECONDS;
+        new_value.it_interval.tv_nsec = 0;
+
+        if (timerfd_settime(client.fd, TFD_TIMER_ABSTIME, &new_value, NULL) == -1)
+            syserr("timerfd_settime");
+
+        uint64_t exp;
+        if (client.revents & POLLIN) {
+            client.revents = 0;
+            read(client.fd, &exp, sizeof(uint64_t));
+        }
+
+    }
+}
 
 
 // czy jest jakiś ładny sposób na oddzielenie player_name jednego komunikatu od session_id kolejnego? Albo raczej przeczytanie dokładnie jednego datagramu, bo te mogę mieć różne długości
@@ -277,7 +295,7 @@ int main(int argc, char *argv[]) {
     my_rand = time(NULL);
 
     get_args(argc, argv);
-    
+
     uint32_t game_id;
     std::map<std::string, player_info> players; // mapujemy nazwę do informacji
     int ready_players = 0;
@@ -286,7 +304,7 @@ int main(int argc, char *argv[]) {
     std::map<uint64_t, std::string> player_ids;
     std::vector<bool> board;
     board.resize(board_width * board_height);
-    std::vector<std::variant<event_newgame, event_pixel, event_player_eliminated, event_gameover>> game_events;
+    std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> game_events;
     bool game_in_progess = false;
 
     /*
@@ -324,8 +342,8 @@ int main(int argc, char *argv[]) {
     serveraddr.sin6_port = htons(port);
     serveraddr.sin6_addr = in6addr_any;
 
-    if (bind(client[0].fd, (struct sockaddr*)&serveraddr,
-             (socklen_t)sizeof(serveraddr)) == -1)
+    if (bind(client[0].fd, (struct sockaddr *) &serveraddr,
+             (socklen_t) sizeof(serveraddr)) == -1)
         syserr("bind serveraddr");
 
     //if (listen(client[0].fd, 10) == -1)
@@ -342,94 +360,62 @@ int main(int argc, char *argv[]) {
 
         if (ret <= 0) // zawsze będzie budzić poll co najmniej timer tury
             syserr("poll or timer");
-        else {
-            if (client[0].revents & POLLIN) {
-                /* Komunikat od klienta */
-                std::cout << "Komunikat od klienta\n";
-                // przetwarzamy część/wszystkie datagramy co doszły
-                // jak niepoprawny komunikat to ignore
-                // jak nieznany gracz to akceptujemy, update struktur danych
-                // jak znany gracz i mniejsze session_id to ignore
-                // jak znany gracz i >= session_id to git, update struktur danych
 
-                /* pętla for a nie while(true) żeby serwer nie był sparaliżowany np
-                 * masą połączęń i odłączeń obserwatorów którym trzeba wysłać sporą historię */
-                for (int t = 0; t < MAX_CONSECUTIVE_CLIENT_MSG; t++) {
-                    socklen_t rcva_len = (socklen_t) sizeof(client_address);
-                    ret = recvfrom(client[0].fd, ((char *)&in_msg), sizeof(client_msg), 0, (struct sockaddr *) &client_address, &rcva_len);
+        if (client[0].revents & POLLIN) {
+            /* Komunikat od klienta */
+            std::cout << "Komunikat od klienta\n";
+            // przetwarzamy część/wszystkie datagramy co doszły
+            // jak niepoprawny komunikat to ignore
+            // jak nieznany gracz to akceptujemy, update struktur danych
+            // jak znany gracz i mniejsze session_id to ignore
+            // jak znany gracz i >= session_id to git, update struktur danych
 
-                    if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                        // brak komunikatów do odebrania
-                        // jeżeli z pętli wyjdziemy inaczej niż tu to
-                        // być może są jeszcze komunikaty więc nie czyścimy revents
-                        client[0].revents = 0;
+            /* pętla for a nie while(true) żeby serwer nie był sparaliżowany np
+             * masą połączęń i odłączeń obserwatorów którym trzeba wysłać sporą historię */
+            for (int t = 0; t < MAX_CONSECUTIVE_CLIENT_MSG; t++) {
+                socklen_t rcva_len = (socklen_t) sizeof(client_address);
+                ret = recvfrom(client[0].fd, ((char *) &in_msg), sizeof(client_msg), 0,
+                               (struct sockaddr *) &client_address, &rcva_len);
+
+                if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    // brak komunikatów do odebrania
+                    // jeżeli z pętli wyjdziemy inaczej niż tu to
+                    // być może są jeszcze komunikaty więc nie czyścimy revents
+                    client[0].revents = 0;
+                    break;
+                }
+
+                if (in_msg.turn_direction > 2)
+                    continue;
+
+                uint64_t session_id = in_msg.session_id = be64toh(in_msg.session_id);
+                uint32_t next_event = in_msg.next_expected_event_no = be32toh(in_msg.next_expected_event_no);
+                uint8_t turn_direction = in_msg.turn_direction;
+
+                std::cout << session_id << " " << next_event << " " << turn_direction << std::endl;
+                std::string name;
+                bool invalid_msg = false;
+                for (int i = 0; i < ret - 13; i++) {
+                    uint8_t c = in_msg.player_name[i];
+                    std::cout << i << " znak " << c << std::endl;
+                    if (c < 33 || c > 126) {
+                        invalid_msg = true;
                         break;
                     }
+                    name += c;
+                }
+                if (invalid_msg)
+                    continue;
 
-                    if (in_msg.turn_direction > 2)
-                        continue;
+                std::cout << name << std::endl;
 
-                    uint64_t session_id = in_msg.session_id = be64toh(in_msg.session_id);
-                    uint32_t next_event = in_msg.next_expected_event_no = be32toh(in_msg.next_expected_event_no);
-                    uint8_t turn_direction = in_msg.turn_direction;
-
-                    std::cout << session_id << " " << next_event << " " << turn_direction << std::endl;
-                    std::string name;
-                    bool invalid_msg = false;
-                    for (int i = 0; i < ret - 13; i++) {
-                        uint8_t c = in_msg.player_name[i];
-                        std::cout << i << " znak " << c << std::endl;
-                        if (c < 33 || c > 126) {
-                            invalid_msg = true;
-                            break;
-                        }
-                        name += c;
-                    }
-                    if (invalid_msg)
-                        continue;
-
-                    std::cout << name << std::endl;
-
-                    if (name.empty()) {
-                        std::cout << "OBSERWATOR\n";
-                        /* obserwator */
-                        if (observer_ids.find(session_id) == observer_ids.end()) {
-                            /* nowy obserwator */
-                            observer_ids.insert(std::pair(session_id, client_address));
-                            // todo wysyłamy historię eventów  itd
-
-                            for (int i = 2; i < CLIENT_MAX; i++) {
-                                if (client[i].fd == -1) {
-                                    create_timer(client[i].fd, false);
-                                    client_poll_position.insert(std::pair(session_id, i));
-                                }
-                            }
-                        }
-                        else {
-                            /* stary obserwator */
-                            // todo updejt timera komunikacji, wysyłamy brakującą historię (od expected event)
-                        }
-                        continue;
-                    }
-
-                    if (players.find(name) == players.end()) {
-                        /* nieznany gracz */
-                        std::cout << "NIEZNANY GRACZ\n";
-                        if (player_ids.find(session_id) != player_ids.end())
-                            continue;   // ignorujemy, znana sesja nie może ot tak zmienić nazwy gracza
-
-                        player_ids.insert(std::pair(session_id, name));
-                        player_info new_player_info{false, -1, session_id, false,
-                                                    false,0,0,0};
-                        new_player_info.turn_direction = turn_direction;
-                        if (new_player_info.turn_direction != 0) {
-                            new_player_info.ready = true;
-                            ready_players++;
-                        }
-                        new_player_info.address = client_address; // todo może kopiować trzeba
-                        players.insert(std::pair(name, new_player_info));
-
-                        // todo wysyłamy mu historię
+                if (name.empty()) {
+                    std::cout << "OBSERWATOR\n";
+                    /* obserwator */
+                    if (observer_ids.find(session_id) == observer_ids.end()) {
+                        /* nowy obserwator */
+                        observer_ids.insert(std::pair(session_id, client_address));
+                        // todo wysyłamy historię eventów  itd
 
                         for (int i = 2; i < CLIENT_MAX; i++) {
                             if (client[i].fd == -1) {
@@ -438,82 +424,115 @@ int main(int argc, char *argv[]) {
                             }
                         }
                     } else {
-                        /* znany gracz */
-                        player_info &player = players[name];
-                        if (session_id < player.id)
-                            continue;
-                        else {
-                            // update id i związanych struktur danych
-                            int64_t old_id = player.id;
-                            int16_t pp = client_poll_position[old_id];
-                            player.id = session_id;
-
-                            client_poll_position.erase(old_id);
-                            client_poll_position.insert(std::pair(session_id, pp));
-                            player_ids.erase(old_id);
-                            player_ids.insert(std::pair(session_id, name));
-                        }
-
-                        player.turn_direction = turn_direction;
-                        if (!player.ready && turn_direction != 0) {
-                            player.ready = true;
-                            ready_players++;
-                        }
-                        // todo uaktualniamy jego timer, wysyłamy brakującą historię (od expected event)
+                        /* stary obserwator */
+                        // todo updejt timera, wysyłamy brakującą historię (od expected event)
+                        int poll_position = client_poll_position[session_id];
+                        update_timer(client[poll_position]);
                     }
+                    continue;
                 }
-            }
 
-            // iteracja po timerach graczy
-            for (int i = 2; i < CLIENT_MAX; i++) {
-                if (client[i].revents & POLLIN) {
-                    read(client[i].fd, &exp, sizeof(uint64_t));
-                    std::cout << "disconnecting client\n";
-                    client[i].fd = -1;
-                    uint64_t client_session_id;
-                    for (std::pair pair : client_poll_position) {
-                        if (pair.second == i) {
-                            client_session_id = pair.first;
-                            break;
+                if (players.find(name) == players.end()) {
+                    /* nieznany gracz */
+                    std::cout << "NIEZNANY GRACZ\n";
+                    if (player_ids.find(session_id) != player_ids.end())
+                        continue;   // ignorujemy, znana sesja nie może ot tak zmienić nazwy gracza
+
+                    player_ids.insert(std::pair(session_id, name));
+                    player_info new_player_info{false, -1, session_id, false,
+                                                false, 0, 0, 0};
+                    new_player_info.turn_direction = turn_direction;
+                    if (new_player_info.turn_direction != 0) {
+                        new_player_info.ready = true;
+                        ready_players++;
+                    }
+                    new_player_info.address = client_address; // todo może kopiować trzeba
+                    players.insert(std::pair(name, new_player_info));
+
+                    // todo wysyłamy mu historię
+
+                    for (int i = 2; i < CLIENT_MAX; i++) {
+                        if (client[i].fd == -1) {
+                            create_timer(client[i].fd, false);
+                            client_poll_position.insert(std::pair(session_id, i));
                         }
                     }
-                    if (observer_ids.find(client_session_id) != observer_ids.end()) {
-                        // wywalamy observera
-                        observer_ids.erase(client_session_id);
-                    }
+                } else {
+                    /* znany gracz */
+                    player_info &player = players[name];
+                    if (session_id < player.id)
+                        continue;
                     else {
-                        // wywalamy gracza
-                        std::string name = player_ids[client_session_id];
-                        player_info &player = players[name];
-                        player.disconnected = true;
-                        player_ids.erase(client_session_id);
+                        // update id i związanych struktur danych
+                        int64_t old_id = player.id;
+                        int16_t pp = client_poll_position[old_id];
+                        player.id = session_id;
+
+                        client_poll_position.erase(old_id);
+                        client_poll_position.insert(std::pair(session_id, pp));
+                        player_ids.erase(old_id);
+                        player_ids.insert(std::pair(session_id, name));
+                    }
+
+                    player.turn_direction = turn_direction;
+                    if (!player.ready && turn_direction != 0) {
+                        player.ready = true;
+                        ready_players++;
+                    }
+                    int poll_position = client_poll_position[session_id];
+                    update_timer(client[poll_position]);
+
+                    // todo wysyłamy brakującą historię (od expected event)
+                }
+            }
+        }
+
+        // iteracja po timerach graczy
+        for (int i = 2; i < CLIENT_MAX; i++) {
+            if (client[i].revents & POLLIN) {
+                read(client[i].fd, &exp, sizeof(uint64_t));
+                std::cout << "disconnecting client\n";
+                client[i].fd = -1;
+                uint64_t client_session_id;
+                for (std::pair pair : client_poll_position) {
+                    if (pair.second == i) {
+                        client_session_id = pair.first;
+                        break;
                     }
                 }
-            }
-
-
-            if (client[1].revents & POLLIN) {
-                /* Czas przeliczyć turę bądź sprawdzić czy zaczynamy grę*/
-                std::cout << "TURA\n";
-                read(client[1].fd, &exp, sizeof(uint64_t));
-                if (game_in_progess) {
-                    do_turn(game_id, players, board, game_events, game_in_progess);
-                }
-                else if (ready_players >= 2 && ready_players == player_ids.size()) {
-                    game_in_progess = true;
-                    ready_players = 0;
-                    init_game(game_id, players, board, game_events);
-                    do_turn(game_id, players, board, game_events, game_in_progess);
-                }
-
-                if (!game_in_progess) {
-                    // koniec gry, czyścimy dane
-                    // TODO
+                if (observer_ids.find(client_session_id) != observer_ids.end()) {
+                    // wywalamy observera
+                    observer_ids.erase(client_session_id);
+                } else {
+                    // wywalamy gracza
+                    std::string name = player_ids[client_session_id];
+                    player_info &player = players[name];
+                    player.disconnected = true;
+                    player_ids.erase(client_session_id);
                 }
             }
-
-
         }
+
+
+        if (client[1].revents & POLLIN) {
+            /* Czas przeliczyć turę bądź sprawdzić czy zaczynamy grę*/
+            std::cout << "TURA\n";
+            read(client[1].fd, &exp, sizeof(uint64_t));
+            if (game_in_progess) {
+                do_turn(game_id, players, board, game_events, game_in_progess);
+            } else if (ready_players >= 2 && ready_players == player_ids.size()) {
+                game_in_progess = true;
+                ready_players = 0;
+                init_game(game_id, players, board, game_events);
+                do_turn(game_id, players, board, game_events, game_in_progess);
+            }
+
+            if (!game_in_progess) {
+                // koniec gry, czyścimy dane
+                // TODO
+            }
+        }
+
     }
 #pragma clang diagnostic pop
     return 0;
