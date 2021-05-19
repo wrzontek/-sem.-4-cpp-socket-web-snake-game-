@@ -30,7 +30,7 @@
 #define TURN_LEFT 2
 #define NAME_LEN_MAX 20
 #define CLIENT_MAX (2 +  MAX_PLAYERS)
-
+#define MAX_CONSECUTIVE_CLIENT_MSG 20
 
 namespace {
     int64_t my_rand;
@@ -168,7 +168,8 @@ namespace {
     }
 
     void init_game(uint32_t &game_id, std::map<std::string, player_info> &players,
-                   std::vector<bool> &board) {
+                   std::vector<bool> &board,
+                   std::vector<std::variant<event_newgame, event_pixel, event_player_eliminated, event_gameover>> &game_events) {
         game_id = get_random();
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
@@ -177,11 +178,12 @@ namespace {
 
         for (auto &pair: players) {
             player_info &player = pair.second;
-            double x = (player.x = get_random() + 0.5);
-            double y = (player.y = get_random() + 0.5);
+            double x = (player.x = get_random() % (board_width - 1) + 0.5);
+            double y = (player.y = get_random() % (board_height - 1) + 0.5);
             player.direction = get_random() % 360;
             if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                 // todo PLAYER_ELIMINATED wysłać wszystkim
+                // todo sprawdzić czy jest koniec gry
             }
             else {
                 board[y * board_width + x] = EATEN;
@@ -191,7 +193,8 @@ namespace {
     }
 
     void do_turn(uint32_t &game_id, std::map<std::string, player_info> &players,
-                 std::vector<bool> &board) {
+                 std::vector<bool> &board,
+                 std::vector<std::variant<event_newgame, event_pixel, event_player_eliminated, event_gameover>> &game_events) {
 
         for (auto &pair: players) {
             player_info &player = pair.second;
@@ -213,6 +216,7 @@ namespace {
 
                 if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                     // todo PLAYER_ELIMINATED wysłać wszystkim
+                    // todo sprawdzić czy jest koniec gry
                 } else {
                     board[y * board_width + x] = EATEN;
                     // todo PIXEL wysłać wszystkim
@@ -247,6 +251,7 @@ int main(int argc, char *argv[]) {
     std::vector<bool> board;
     board.resize(board_width * board_height);
     std::vector<std::variant<event_newgame, event_pixel, event_player_eliminated, event_gameover>> game_events;
+    bool game_in_progess = false;
 
     /*
      * client[0] na obsługę komunikatów
@@ -256,7 +261,6 @@ int main(int argc, char *argv[]) {
 
     pollfd client[CLIENT_MAX];
     sockaddr_in6 serveraddr{};
-    int msgsock;
 
     for (int i = 0; i < CLIENT_MAX; i++) {
         client[i].fd = -1;
@@ -268,7 +272,6 @@ int main(int argc, char *argv[]) {
     timespec now{};
     if (clock_gettime(CLOCK_REALTIME, &now) == -1)
         syserr("clock_gettime");
-
 
     new_value.it_value.tv_sec = now.tv_sec;
     new_value.it_value.tv_nsec = now.tv_nsec;
@@ -291,6 +294,9 @@ int main(int argc, char *argv[]) {
                    (char *) &on, sizeof(on)) < 0)
         syserr("setsockopt");
 
+    if (fcntl(client[0].fd, F_SETFL, fcntl(client[0].fd, F_GETFL, 0) | O_NONBLOCK) == -1)
+        syserr("fcntl");
+
     memset(&serveraddr, 0, sizeof(serveraddr));
     serveraddr.sin6_family = AF_INET6;
     serveraddr.sin6_port = htons(port);
@@ -302,41 +308,40 @@ int main(int argc, char *argv[]) {
 
     //if (listen(client[0].fd, 10) == -1)
     //    syserr("listen");
-    char in_buf[sizeof(client_msg)];
     client_msg in_msg{};
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
     while (true) { // pracujemy aż coś się mocno nie zepsuje
-        for (int i = 0; i < CLIENT_MAX; i++) {
+        for (int i = 1; i < CLIENT_MAX; i++)
             client[i].revents = 0;
-        }
 
-        int ret = poll(client, CLIENT_MAX, 2000); // jeżeli przez 2 sekundy nic do nas nie przyjdzie to trzeba wywalić graczy
+        int ret = poll(client, CLIENT_MAX, 5000);
 
-        if (ret == -1) {
-            syserr("poll");
-        }
-        else if (ret == 0) {
-            // wywalamy graczy
-        }
+        if (ret <= 0) // zawsze będzie budzić poll co najmniej timer tury
+            syserr("poll or timer");
         else {
             if (client[0].revents & POLLIN) {
                 /* Komunikat od klienta */
                 std::cout << "Komunikat od klienta\n";
-                // przetwarzamy wszystkie datagramy co doszły
+                // przetwarzamy część/wszystkie datagramy co doszły
                 // jak niepoprawny komunikat to ignore
-                // jak nieznany gracz to akceptujemy, udpejt struktur danych
+                // jak nieznany gracz to akceptujemy, update struktur danych
                 // jak znany gracz i mniejsze session_id to ignore
-                // jak znany gracz i >= session_id to git, updejt struktur danych
-                while (true) {
-                    // TODO ŻEBY NIE BLOKOWAŁO
-                    ret = recvfrom(client[0].fd, ((char *)&in_msg), sizeof(client_msg), 0, NULL, NULL);
-                    if (ret < 0)
-                        continue;   // jeżeli error to trudno, żyje się dalej
-                    if (ret == 0)
-                        break;
+                // jak znany gracz i >= session_id to git, update struktur danych
 
+                /* pętla for a nie while(true) żeby serwer nie był sparaliżowany np
+                 * masą połączęń i odłączeń obserwatorów którym trzeba wysłać sporą historię */
+                for (int t = 0; t < MAX_CONSECUTIVE_CLIENT_MSG; t++) {
+                    ret = recvfrom(client[0].fd, ((char *)&in_msg), sizeof(client_msg), 0, NULL, NULL);
+
+                    if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                        // brak komunikatów do odebrania
+                        // jeżeli z pętli wyjdziemy inaczej niż tu to
+                        // być może są jeszcze komunikaty więc nie czyścimy revents
+                        client[0].revents = 0;
+                        break;
+                    }
                     if (in_msg.turn_direction > 2)
                         continue;
 
@@ -346,7 +351,7 @@ int main(int argc, char *argv[]) {
                     std::string name;
                     bool invalid_msg = false;
                     for (int i = 0; i < ret - 13; i++) {
-                        char c = in_msg.player_name[i];
+                        uint8_t c = in_msg.player_name[i];
                         if (c < 33 || c > 126) {
                             invalid_msg = true;
                             break;
@@ -403,17 +408,31 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            if (client[1].revents & POLLIN) {
-                /* Czas przeliczyć turę */
-                std::cout << "TURA\n";
+            // todo iteracja po timerach graczy
+            for (int i = 2; i < CLIENT_MAX; i++) {
+                if (client[i].revents & POLLIN) {
+                    // todo wywalamy klienta, zwalniamy miejsce
+                }
+            }
 
+
+            if (client[1].revents & POLLIN) {
+                /* Czas przeliczyć turę bądź sprawdzić czy zaczynamy grę*/
+                std::cout << "TURA\n";
                 uint64_t exp;
                 read(client[1].fd, &exp, sizeof(uint64_t));
 
-                do_turn(game_id, players, board);
+                if (game_in_progess) {
+                    do_turn(game_id, players, board, game_events);
+                }
+                else if (ready_players >= 2 && ready_players == player_ids.size()) {
+                    game_in_progess = true;
+                    init_game(game_id, players, board, game_events);
+                    do_turn(game_id, players, board, game_events);
+                }
             }
 
-            // todo iteracja po timerach graczy
+
         }
     }
 #pragma clang diagnostic pop
@@ -421,6 +440,5 @@ int main(int argc, char *argv[]) {
 
 
 
-    //init_game(game_id, players, player_worms, board);
     return 123;
 };
