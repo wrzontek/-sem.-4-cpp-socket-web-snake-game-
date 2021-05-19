@@ -80,6 +80,7 @@ namespace {
     }
 
     struct player_info {
+        int16_t number;
         uint64_t id;
         bool ready;
         bool in_game;
@@ -87,7 +88,7 @@ namespace {
         double y;
         int16_t direction;
         uint8_t turn_direction;
-        // address do wysyłania
+        sockaddr_in6 address;
     };
 
     struct __attribute__((__packed__)) client_msg {
@@ -176,8 +177,11 @@ namespace {
 
         // todo NEW_GAME wysłać wszystkim
 
+        int n = 0;
         for (auto &pair: players) {
             player_info &player = pair.second;
+            player.number = n;
+            n++;
             double x = (player.x = get_random() % (board_width - 1) + 0.5);
             double y = (player.y = get_random() % (board_height - 1) + 0.5);
             player.direction = get_random() % 360;
@@ -216,7 +220,7 @@ namespace {
 
                 if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                     // todo PLAYER_ELIMINATED wysłać wszystkim
-                    // todo sprawdzić czy jest koniec gry
+                    // todo sprawdzić czy jest koniec gry, jak tak to czyścimy struktury dany np player_info, board, historia
                 } else {
                     board[y * board_width + x] = EATEN;
                     // todo PIXEL wysłać wszystkim
@@ -246,7 +250,7 @@ int main(int argc, char *argv[]) {
     uint32_t game_id;
     std::map<std::string, player_info> players; // mapujemy nazwę do informacji
     int ready_players = 0;
-    std::set<uint64_t> observer_ids;
+    std::map<uint64_t, sockaddr_in6> observer_ids;
     std::set<uint64_t> player_ids;
     std::vector<bool> board;
     board.resize(board_width * board_height);
@@ -261,6 +265,7 @@ int main(int argc, char *argv[]) {
 
     pollfd client[CLIENT_MAX];
     sockaddr_in6 serveraddr{};
+    sockaddr_in6 client_address{};
 
     for (int i = 0; i < CLIENT_MAX; i++) {
         client[i].fd = -1;
@@ -275,7 +280,7 @@ int main(int argc, char *argv[]) {
 
     new_value.it_value.tv_sec = now.tv_sec;
     new_value.it_value.tv_nsec = now.tv_nsec;
-    new_value.it_interval.tv_sec = 0;
+    new_value.it_interval.tv_sec = 1;
     new_value.it_interval.tv_nsec = 1000000000 / rounds_per_sec;
 
     client[1].fd = timerfd_create(CLOCK_REALTIME, 0);
@@ -333,7 +338,8 @@ int main(int argc, char *argv[]) {
                 /* pętla for a nie while(true) żeby serwer nie był sparaliżowany np
                  * masą połączęń i odłączeń obserwatorów którym trzeba wysłać sporą historię */
                 for (int t = 0; t < MAX_CONSECUTIVE_CLIENT_MSG; t++) {
-                    ret = recvfrom(client[0].fd, ((char *)&in_msg), sizeof(client_msg), 0, NULL, NULL);
+                    socklen_t rcva_len = (socklen_t) sizeof(client_address);
+                    ret = recvfrom(client[0].fd, ((char *)&in_msg), sizeof(client_msg), 0, (struct sockaddr *) &client_address, &rcva_len);
 
                     if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         // brak komunikatów do odebrania
@@ -345,58 +351,67 @@ int main(int argc, char *argv[]) {
                     if (in_msg.turn_direction > 2)
                         continue;
 
-                    in_msg.session_id = be64toh(in_msg.session_id);
-                    in_msg.next_expected_event_no = be32toh(in_msg.next_expected_event_no);
+                    uint64_t session_id = in_msg.session_id = be64toh(in_msg.session_id);
+                    uint32_t next_event = in_msg.next_expected_event_no = be32toh(in_msg.next_expected_event_no);
 
+                    std::cout << session_id << " " << next_event << std::endl;
                     std::string name;
                     bool invalid_msg = false;
                     for (int i = 0; i < ret - 13; i++) {
                         uint8_t c = in_msg.player_name[i];
+                        std::cout << i << " znak " << c << std::endl;
                         if (c < 33 || c > 126) {
                             invalid_msg = true;
                             break;
                         }
-                        name += in_msg.player_name[i];
+                        name += c;
                     }
                     if (invalid_msg)
                         continue;
 
+                    std::cout << name << std::endl;
+
                     if (name.empty()) {
+                        std::cout << "OBSERWATOR\n";
                         /* obserwator */
-                        if (observer_ids.find(in_msg.session_id) == observer_ids.end()) {
+                        if (observer_ids.find(session_id) == observer_ids.end()) {
                             /* nowy obserwator */
-                            observer_ids.insert(in_msg.session_id);
+                            observer_ids.insert(std::pair(session_id, client_address));
                             // todo wysyłamy historię eventów mu, tworzymy timer itd
+
                         }
                         else {
                             /* stary obserwator */
                             // todo updejt timera komunikacji, wysyłamy brakującą historię (od expected event)
                         }
+                        continue;
                     }
 
                     if (players.find(name) == players.end()) {
                         /* nieznany gracz */
-                        if (player_ids.find(in_msg.session_id) != player_ids.end())
+                        std::cout << "NIEZNANY GRACZ\n";
+                        if (player_ids.find(session_id) != player_ids.end())
                             continue;   // ignorujemy, znana sesja nie może ot tak zmienić nazwy gracza
 
-                        player_ids.insert(in_msg.session_id);
-                        player_info new_player_info{in_msg.session_id, false,
+                        player_ids.insert(session_id);
+                        player_info new_player_info{-1, session_id, false,
                                                     false,0,0,0};
                         new_player_info.turn_direction = in_msg.turn_direction;
                         if (new_player_info.turn_direction != 0) {
                             new_player_info.ready = true;
                             ready_players++;
                         }
+                        new_player_info.address = client_address; // todo może kopiować trzeba
                         players.insert(std::pair(name, new_player_info));
 
                         // todo wysyłamy mu historię, tworzymy timer
                     } else {
                         /* znany gracz */
                         player_info &player = players[name];
-                        if (in_msg.session_id < player.id)
+                        if (session_id < player.id)
                             continue;
                         else
-                            player.id = in_msg.session_id;
+                            player.id = session_id;
 
                         player.turn_direction = in_msg.turn_direction;
                         if (!player.ready && player.turn_direction != 0) {
@@ -436,9 +451,5 @@ int main(int argc, char *argv[]) {
         }
     }
 #pragma clang diagnostic pop
-
-
-
-
-    return 123;
+    return 0;
 };
