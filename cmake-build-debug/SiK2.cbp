@@ -80,6 +80,12 @@
 				</MakeCommands>
 			</Target>
 		</Build>
+		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp">
+			<Option target="SiK2"/>
+		</Unit>
+		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.h">
+			<Option target="SiK2"/>
+		</Unit>
 		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/main.cpp">
 			<Option target="SiK2"/>
 		</Unit>

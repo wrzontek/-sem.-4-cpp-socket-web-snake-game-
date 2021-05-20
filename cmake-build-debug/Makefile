@@ -143,6 +143,33 @@ SiK2/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/build
 .PHONY : SiK2/fast
 
+crc.o: crc.cpp.o
+
+.PHONY : crc.o
+
+# target to build an object file
+crc.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/crc.cpp.o
+.PHONY : crc.cpp.o
+
+crc.i: crc.cpp.i
+
+.PHONY : crc.i
+
+# target to preprocess a source file
+crc.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/crc.cpp.i
+.PHONY : crc.cpp.i
+
+crc.s: crc.cpp.s
+
+.PHONY : crc.s
+
+# target to generate assembly for a file
+crc.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/crc.cpp.s
+.PHONY : crc.cpp.s
+
 main.o: main.cpp.o
 
 .PHONY : main.o
@@ -179,6 +206,9 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... SiK2"
+	@echo "... crc.o"
+	@echo "... crc.i"
+	@echo "... crc.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

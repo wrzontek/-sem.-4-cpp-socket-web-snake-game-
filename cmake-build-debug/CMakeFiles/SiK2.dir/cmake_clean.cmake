@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/SiK2.dir/crc.cpp.o"
   "CMakeFiles/SiK2.dir/main.cpp.o"
   "SiK2.exe"
   "SiK2.pdb"

@@ -15,7 +15,9 @@
 #include <poll.h>
 #include <variant>
 #include <sys/timerfd.h>
+#include "crc.h"
 #include <set>
+#include <cassert>
 
 
 #define MAX_PLAYERS 25
@@ -24,14 +26,21 @@
 #define DEFAULT_ROUNDS_PER_SEC 50
 #define DEFAULT_BOARD_WIDTH 640
 #define DEFAULT_BOARD_HEIGHT 480
+
 #define NOT_EATEN false
 #define EATEN true
 #define TURN_RIGHT 1
 #define TURN_LEFT 2
+
 #define NAME_LEN_MAX 20
 #define CLIENT_MAX (2 +  MAX_PLAYERS)
 #define MAX_CONSECUTIVE_CLIENT_MSG 20
 #define CLIENT_TIMEOUT_SECONDS 2
+
+#define TYPE_NEW_GAME 0
+#define TYPE_PIXEL 1
+#define TYPE_PLAYER_ELIMINATED 2
+#define TYPE_GAME_OVER 3
 
 namespace {
     int64_t my_rand;
@@ -169,9 +178,43 @@ namespace {
         }
     }
 
+    bool check_game_over(std::map<std::string, player_info> &players) {
+        int alive_players = 0;
+        for (auto &pair2: players) {
+            if (pair2.second.in_game)
+                alive_players++;
+        }
+        assert(alive_players > 0);
+        if (alive_players == 1)
+            return true;
+        else
+            return false;
+    }
+
+    void handle_player_elimination(player_info &player, std::map<std::string, player_info> &players, bool &game_in_progess,
+                                   std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
+        player.in_game = false;
+        event_player_eliminated event_elimination{htobe32(sizeof(event_player_eliminated) - 8),
+                                                  htobe32((uint32_t)game_events.size()),
+                                                  TYPE_PLAYER_ELIMINATED, (uint8_t)player.number, 0};
+        event_elimination.crc32 = crc32buf((char *)&event_elimination, sizeof(event_player_eliminated) - 4);
+        game_events.emplace_back(event_elimination);
+
+        // todo PLAYER_ELIMINATED wysłać wszystkim (poza disconnected)
+        if (check_game_over(players)) {
+            game_in_progess = false;
+            event_game_over event_game_over{htobe32(sizeof(event_game_over) - 8),
+                                            htobe32((uint32_t)game_events.size()),
+                                            TYPE_GAME_OVER, 0};
+            event_game_over.crc32 = crc32buf((char *)&event_elimination, sizeof(event_player_eliminated) - 4);
+            game_events.emplace_back(event_game_over);
+        }
+    }
+
     void init_game(uint32_t &game_id, std::map<std::string, player_info> &players,
                    std::vector<bool> &board,
-                   std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
+                   std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events,
+                   bool &game_in_progess) {
         game_id = get_random();
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
@@ -183,14 +226,19 @@ namespace {
             player_info &player = pair.second;
             player.number = n;
             n++;
-            double x = (player.x = get_random() % (board_width - 1) + 0.5);
-            double y = (player.y = get_random() % (board_height - 1) + 0.5);
+            uint32_t x = (player.x = get_random() % (board_width - 1) + 0.5);
+            uint32_t y = (player.y = get_random() % (board_height - 1) + 0.5);
             player.direction = get_random() % 360;
             if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
-                // todo PLAYER_ELIMINATED wysłać wszystkim (poza disconnected)
-                // todo sprawdzić czy jest koniec gry
+                handle_player_elimination(player, players, game_in_progess, game_events);
             } else {
                 board[y * board_width + x] = EATEN;
+                event_pixel event_pixel{htobe32(sizeof(event_pixel) - 8),
+                                        htobe32((uint32_t)game_events.size()),
+                                        TYPE_PIXEL, (uint8_t)player.number,
+                                        htobe32(x), htobe32(y), 0};
+                event_pixel.crc32 = crc32buf((char *)&event_pixel, sizeof(event_player_eliminated) - 4);
+                game_events.emplace_back(event_pixel);
                 // todo PIXEL wysłać wszystkim (poza disconnected)
             }
         }
@@ -213,16 +261,14 @@ namespace {
                 double old_y = player.y;
 
                 double direction = degree_to_radian(player.direction);
-                double x = (player.x += std::cos(direction));
-                double y = (player.y += std::sin(direction));
+                uint32_t x = (player.x += std::cos(direction));
+                uint32_t y = (player.y += std::sin(direction));
 
                 if (x == old_x && y == old_y)
                     continue;
 
                 if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
-                    // todo PLAYER_ELIMINATED wysłać wszystkim (poza disconnected)
-                    // todo sprawdzić czy jest koniec gry
-                    // game_in_progess = false;
+                    handle_player_elimination(player, players, game_in_progess, game_events);
                 } else {
                     board[y * board_width + x] = EATEN;
                     // todo PIXEL wysłać wszystkim (poza disconnected)
@@ -346,10 +392,11 @@ int main(int argc, char *argv[]) {
              (socklen_t) sizeof(serveraddr)) == -1)
         syserr("bind serveraddr");
 
-    //if (listen(client[0].fd, 10) == -1)
-    //    syserr("listen");
     client_msg in_msg{};
     uint64_t exp;
+
+    //init_crc_table();
+
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
     while (true) { // pracujemy aż coś się mocno nie zepsuje
@@ -523,8 +570,8 @@ int main(int argc, char *argv[]) {
             } else if (ready_players >= 2 && ready_players == player_ids.size()) {
                 game_in_progess = true;
                 ready_players = 0;
-                init_game(game_id, players, board, game_events);
-                do_turn(game_id, players, board, game_events, game_in_progess);
+                init_game(game_id, players, board, game_events, game_in_progess);
+                //do_turn(game_id, players, board, game_events, game_in_progess);
             }
 
             if (!game_in_progess) {
