@@ -212,9 +212,9 @@ namespace {
     }
 
     void init_game(uint32_t &game_id, std::map<std::string, player_info> &players,
-                   std::vector<bool> &board,
+                   std::map<uint64_t, sockaddr_in6> &observers, std::vector<bool> &board,
                    std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events,
-                   bool &game_in_progess) {
+                   bool &game_in_progess, int socket) {
         game_id = get_random();
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
@@ -239,15 +239,27 @@ namespace {
                                         htobe32(x), htobe32(y), 0};
                 event_pixel.crc32 = crc32buf((char *)&event_pixel, sizeof(event_player_eliminated) - 4);
                 game_events.emplace_back(event_pixel);
-                // todo PIXEL wysłać wszystkim (poza disconnected)
+                for (auto &pair2: players) {
+                    player_info &client_player = pair.second;
+                    if (client_player.disconnected)
+                        continue;
+
+                    sendto(socket, (char *)&event_pixel, sizeof(event_pixel), 0,
+                           (sockaddr *)&client_player.address, sizeof(client_player.address));
+                }
+                for (auto &pair2: observers) {
+                    auto addr = pair2.second;
+                    sendto(socket, (char *)&event_pixel, sizeof(event_pixel), 0,
+                           (sockaddr *)&(addr), sizeof(addr));
+                }
             }
         }
     }
 
     void do_turn(uint32_t &game_id, std::map<std::string, player_info> &players,
-                 std::vector<bool> &board,
+                 std::map<uint64_t, sockaddr_in6> &observers, std::vector<bool> &board,
                  std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events,
-                 bool &game_in_progess) {
+                 bool &game_in_progess, int socket) {
 
         for (auto &pair: players) {
             player_info &player = pair.second;
@@ -271,7 +283,25 @@ namespace {
                     handle_player_elimination(player, players, game_in_progess, game_events);
                 } else {
                     board[y * board_width + x] = EATEN;
-                    // todo PIXEL wysłać wszystkim (poza disconnected)
+                    event_pixel event_pixel{htobe32(sizeof(event_pixel) - 8),
+                                            htobe32((uint32_t)game_events.size()),
+                                            TYPE_PIXEL, (uint8_t)player.number,
+                                            htobe32(x), htobe32(y), 0};
+                    event_pixel.crc32 = crc32buf((char *)&event_pixel, sizeof(event_player_eliminated) - 4);
+                    game_events.emplace_back(event_pixel);
+                    for (auto &pair2: players) {
+                        player_info &client_player = pair.second;
+                        if (client_player.disconnected)
+                            continue;
+
+                        sendto(socket, (char *)&event_pixel, sizeof(event_pixel), 0,
+                               (sockaddr *)&client_player.address, sizeof(client_player.address));
+                    }
+                    for (auto &pair2: observers) {
+                        auto addr = pair2.second;
+                        sendto(socket, (char *)&event_pixel, sizeof(event_pixel), 0,
+                               (sockaddr *)&(addr), sizeof(addr));
+                    }
                 }
             }
         }
@@ -345,7 +375,7 @@ int main(int argc, char *argv[]) {
     uint32_t game_id;
     std::map<std::string, player_info> players; // mapujemy nazwę do informacji
     int ready_players = 0;
-    std::map<uint64_t, sockaddr_in6> observer_ids;
+    std::map<uint64_t, sockaddr_in6> observers;
     std::map<uint64_t, uint16_t> client_poll_position; // pun not intended
     std::map<uint64_t, std::string> player_ids;
     std::vector<bool> board;
@@ -459,9 +489,9 @@ int main(int argc, char *argv[]) {
                 if (name.empty()) {
                     std::cout << "OBSERWATOR\n";
                     /* obserwator */
-                    if (observer_ids.find(session_id) == observer_ids.end()) {
+                    if (observers.find(session_id) == observers.end()) {
                         /* nowy obserwator */
-                        observer_ids.insert(std::pair(session_id, client_address));
+                        observers.insert(std::pair(session_id, client_address));
                         // todo wysyłamy historię eventów  itd
 
                         for (int i = 2; i < CLIENT_MAX; i++) {
@@ -547,9 +577,9 @@ int main(int argc, char *argv[]) {
                         break;
                     }
                 }
-                if (observer_ids.find(client_session_id) != observer_ids.end()) {
+                if (observers.find(client_session_id) != observers.end()) {
                     // wywalamy observera
-                    observer_ids.erase(client_session_id);
+                    observers.erase(client_session_id);
                 } else {
                     // wywalamy gracza
                     std::string name = player_ids[client_session_id];
@@ -566,11 +596,11 @@ int main(int argc, char *argv[]) {
             std::cout << "TURA\n";
             read(client[1].fd, &exp, sizeof(uint64_t));
             if (game_in_progess) {
-                do_turn(game_id, players, board, game_events, game_in_progess);
+                do_turn(game_id, players, observers, board, game_events, game_in_progess, client[0].fd);
             } else if (ready_players >= 2 && ready_players == player_ids.size()) {
                 game_in_progess = true;
                 ready_players = 0;
-                init_game(game_id, players, board, game_events, game_in_progess);
+                init_game(game_id, players, observers, board, game_events, game_in_progess, client[0].fd);
                 //do_turn(game_id, players, board, game_events, game_in_progess);
             }
 
