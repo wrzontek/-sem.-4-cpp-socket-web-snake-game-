@@ -42,8 +42,10 @@
 #define TYPE_PLAYER_ELIMINATED 2
 #define TYPE_GAME_OVER 3
 
+#define DATAGRAM_MAX_SIZE 65508
+
 namespace {
-    int64_t my_rand;
+    uint64_t my_rand;
     int port, turning_speed, rounds_per_sec, board_width, board_height;
 
     /* funkcja syserr z laboratoriów */
@@ -82,8 +84,8 @@ namespace {
         return (d / 180.0) * ((double) M_PI);
     }
 
-    int32_t get_random() {
-        int32_t result = (int32_t) my_rand;
+    uint32_t get_random() {
+        uint32_t result = (uint32_t) my_rand;
         my_rand = (my_rand * 279410273) % 4294967291;
         return result;
     }
@@ -185,10 +187,8 @@ namespace {
                 alive_players++;
         }
         assert(alive_players > 0);
-        if (alive_players == 1)
-            return true;
-        else
-            return false;
+
+        return alive_players == 1;
     }
 
     void handle_player_elimination(player_info &player, std::map<std::string, player_info> &players, bool &game_in_progess,
@@ -224,14 +224,22 @@ namespace {
         int n = 0;
         for (auto &pair: players) {
             player_info &player = pair.second;
+            player.in_game = true;
             player.number = n;
+            std::cout << "ruch gracza " << player.number << std::endl;
             n++;
-            uint32_t x = (player.x = get_random() % (board_width - 1) + 0.5);
-            uint32_t y = (player.y = get_random() % (board_height - 1) + 0.5);
+            uint32_t x = player.x = (get_random() % (board_width - 1) + 0.5);
+            uint32_t y = player.y = (get_random() % (board_height - 1) + 0.5);
             player.direction = get_random() % 360;
+
+            std::cout << x << " " << y << "  " << y * board_width + x << " <> " << board.size() << std::endl;
             if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
+                std::cout << "ELIMINATED\n";
                 handle_player_elimination(player, players, game_in_progess, game_events);
+                if (!game_in_progess)
+                    return;
             } else {
+                std::cout << "PIXEL\n";
                 board[y * board_width + x] = EATEN;
                 event_pixel event_pixel{htobe32(sizeof(event_pixel) - 8),
                                         htobe32((uint32_t)game_events.size()),
@@ -263,14 +271,15 @@ namespace {
 
         for (auto &pair: players) {
             player_info &player = pair.second;
+            std::cout << "ruch gracza " << player.number << std::endl;
             if (player.in_game) {
                 if (player.turn_direction == TURN_RIGHT)
                     player.direction += turning_speed;
                 else if (player.turn_direction == TURN_LEFT)
                     player.direction -= turning_speed;
 
-                double old_x = player.x;
-                double old_y = player.y;
+                uint32_t old_x = player.x;
+                uint32_t old_y = player.y;
 
                 double direction = degree_to_radian(player.direction);
                 uint32_t x = (player.x += std::cos(direction));
@@ -279,6 +288,7 @@ namespace {
                 if (x == old_x && y == old_y)
                     continue;
 
+                std::cout << x << " " << y << "  " << y * board_width + x << " <> " << board.size() << std::endl;
                 if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                     handle_player_elimination(player, players, game_in_progess, game_events);
                 } else {
@@ -358,7 +368,34 @@ namespace {
     }
 }
 
+void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char *buf,
+                  std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
+    static char event_buf[550];
 
+    if (expected_event_no >= game_events.size()) {
+        int total_size = 0;
+        int size = 0;
+
+        for (int i = expected_event_no; i < game_events.size(); i++) {
+            auto event_variant = game_events[1];
+            if (auto new_game_p = std::get_if<event_new_game>(&event_variant)) {
+
+            } else if (auto pixel_p = std::get_if<event_pixel>(&event_variant)) {
+                event_pixel pixel = *pixel_p;
+                strncpy(event_buf, (const char *)&pixel, sizeof(pixel));
+                size = sizeof(pixel);
+            }
+
+            if (total_size + size <= DATAGRAM_MAX_SIZE) {
+                total_size += size;
+                // todo wysyłamy
+            } else {
+                // todo wysyłamy co mamy
+                send_history(i, client_address, buf, game_events);
+            }
+        }
+    }
+}
 // czy jest jakiś ładny sposób na oddzielenie player_name jednego komunikatu od session_id kolejnego? Albo raczej przeczytanie dokładnie jednego datagramu, bo te mogę mieć różne długości
 int main(int argc, char *argv[]) {
     //std::cout << std::sin(degree_to_radian(0)) << " " << std::cos(degree_to_radian(0)) << std::endl;
@@ -382,7 +419,7 @@ int main(int argc, char *argv[]) {
     std::vector<bool> board;
     board.resize(board_width * board_height);
     std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> game_events;
-    bool game_in_progess = false;
+    bool game_in_progress = false;
 
     /*
      * client[0] na obsługę komunikatów
@@ -425,6 +462,9 @@ int main(int argc, char *argv[]) {
 
     client_msg in_msg{};
     uint64_t exp;
+    char *buf = (char *)calloc(DATAGRAM_MAX_SIZE, 1);
+    if (buf == NULL)
+        syserr("calloc");
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
@@ -455,9 +495,7 @@ int main(int argc, char *argv[]) {
 
                 if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                     std::cout << "BRAK" << std::endl;
-                    // brak komunikatów do odebrania
-                    // jeżeli z pętli wyjdziemy inaczej niż tu to
-                    // być może są jeszcze komunikaty więc nie czyścimy revents
+                    // brak komunikatów do odebrania więc zerujemy revents
                     client[0].revents = 0;
                     break;
                 }
@@ -493,6 +531,7 @@ int main(int argc, char *argv[]) {
                         /* nowy obserwator */
                         observers.insert(std::pair(session_id, client_address));
                         // todo wysyłamy historię eventów  itd
+                        send_history(next_event, client_address, buf, game_events);
 
                         for (int i = 2; i < CLIENT_MAX; i++) {
                             if (client[i].fd == -1) {
@@ -503,7 +542,7 @@ int main(int argc, char *argv[]) {
                         }
                     } else {
                         /* stary obserwator */
-                        // todo updejt timera, wysyłamy brakującą historię (od expected event)
+                        // todo wysyłamy brakującą historię (od expected event)
                         int poll_position = client_poll_position[session_id];
                         update_timer(client[poll_position]);
                     }
@@ -587,7 +626,7 @@ int main(int argc, char *argv[]) {
                     std::string name = player_ids[client_session_id];
                     player_info &player = players[name];
                     player.disconnected = true;
-                    if (!game_in_progess) {
+                    if (!game_in_progress) {
                         player_ids.erase(client_session_id);
                         players.erase(name);
                     }
@@ -600,18 +639,27 @@ int main(int argc, char *argv[]) {
             /* Czas przeliczyć turę bądź sprawdzić czy zaczynamy grę*/
             std::cout << "TURA\n";
             read(client[1].fd, &exp, sizeof(uint64_t));
-            if (game_in_progess) {
-                do_turn(game_id, players, observers, board, game_events, game_in_progess, client[0].fd);
+            if (game_in_progress) {
+                do_turn(game_id, players, observers, board, game_events, game_in_progress, client[0].fd);
             } else if (ready_players >= 2 && ready_players == player_ids.size()) {
-                game_in_progess = true;
-                ready_players = 0;
-                init_game(game_id, players, observers, board, game_events, game_in_progess, client[0].fd);
-                //do_turn(game_id, players, board, game_events, game_in_progess);
+                game_in_progress = true;
+                init_game(game_id, players, observers, board, game_events, game_in_progress, client[0].fd);
             }
 
-            if (!game_in_progess) {
-                // koniec gry, czyścimy dane i disconnected pleyerów
-                // TODO
+            if (!game_in_progress) {
+                game_events = std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>>();
+                for (auto &pair : players) {
+                    player_info &player = pair.second;
+                    player.ready = false;
+                    player.in_game = false;
+                    if (player.disconnected) {
+                        client[client_poll_position[player.id]].fd = -1;
+                        client_poll_position.erase(player.id);
+                        players.erase(player_ids[player.id]);
+                        player_ids.erase(player.id);
+                    }
+                }
+                ready_players = 0;
             }
         }
 
