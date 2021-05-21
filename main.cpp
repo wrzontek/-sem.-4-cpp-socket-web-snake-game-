@@ -35,8 +35,8 @@
 #define NAME_LEN_MAX 20
 #define CLIENT_MAX (2 +  MAX_PLAYERS)
 #define MAX_CONSECUTIVE_CLIENT_MSG 20
-#define CLIENT_TIMEOUT_SECONDS 2
-
+#define CLIENT_TIMEOUT_SECONDS 5
+// todo ^ na 2
 #define TYPE_NEW_GAME 0
 #define TYPE_PIXEL 1
 #define TYPE_PLAYER_ELIMINATED 2
@@ -110,6 +110,7 @@ namespace {
         uint8_t player_name[NAME_LEN_MAX];
     };
 
+    // TODO zobacz czy len napewno 32bity
     struct __attribute__((__packed__)) event_new_game {
         uint32_t len;
         uint32_t event_no;
@@ -117,9 +118,7 @@ namespace {
 
         uint32_t maxx;
         uint32_t maxy;
-        uint8_t player_list[(NAME_LEN_MAX + 1) * MAX_PLAYERS];
-
-        uint32_t crc32;
+        uint8_t list_and_crc[21 * MAX_PLAYERS + 4];
     };
 
     struct __attribute__((__packed__)) event_pixel {
@@ -194,7 +193,7 @@ namespace {
     void send_to_all(std::map<std::string, player_info> &players,
                      std::map<uint64_t, sockaddr_in6> &observers,
                      char *event, size_t size) {
-
+        std::cout << "SENDING!!!\n";
         for (auto &pair: players) {
             player_info &client_player = pair.second;
             if (client_player.disconnected)
@@ -222,7 +221,6 @@ namespace {
 
         send_to_all(players, observers, (char *)&event_elimination, sizeof(event_elimination));
 
-        // todo PLAYER_ELIMINATED wysłać wszystkim (poza disconnected)
         if (check_game_over(players)) {
             game_in_progess = false;
             event_game_over event_game_over{htobe32(sizeof(event_game_over) - 8),
@@ -230,8 +228,38 @@ namespace {
                                             TYPE_GAME_OVER, 0};
             event_game_over.crc32 = crc32buf((char *)&event_elimination, sizeof(event_player_eliminated) - 4);
             game_events.emplace_back(event_game_over);
+
+            send_to_all(players, observers, (char *)&event_game_over, sizeof(event_game_over));
         }
     }
+
+    void send_new_game(std::map<std::string, player_info> &players,
+                       std::map<uint64_t, sockaddr_in6> &observers,
+                       std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
+        std::string player_list;
+        for (auto &pair : players) {
+            std::string name = pair.first;
+            player_list += name + " ";
+        }
+        player_list[player_list.size() - 1] = '\0';
+
+        event_new_game event_new_game{htobe32(13 + player_list.size()) + 4,
+                                      htobe32(game_events.size()), TYPE_NEW_GAME,
+                                      htobe32(board_width), htonl(board_height),};
+
+        uint32_t crc32 = htobe32(crc32buf((char *)&event_new_game, 13 + player_list.size()));
+
+        for (int i = 0; i < player_list.size(); i++)
+            event_new_game.list_and_crc[i] = player_list[i];
+
+        // todo tutaj te wskaźniki kopiowanka dziwne poprawić
+        strncpy((char *)&event_new_game + 13 + player_list.size(), (char *)&crc32, sizeof(crc32));
+
+        game_events.emplace_back(event_new_game);
+
+        send_to_all(players, observers, (char *)&event_new_game, sizeof(event_game_over));
+    }
+
 
     void init_game(uint32_t &game_id, std::map<std::string, player_info> &players,
                    std::map<uint64_t, sockaddr_in6> &observers, std::vector<bool> &board,
@@ -241,7 +269,9 @@ namespace {
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
 
+
         // todo NEW_GAME wysłać wszystkim (poza disconnected)
+        send_new_game(players, observers, game_events);
 
         int n = 0;
         for (auto &pair: players) {
@@ -269,6 +299,7 @@ namespace {
                                         htobe32(x), htobe32(y), 0};
                 event_pixel.crc32 = crc32buf((char *)&event_pixel, sizeof(event_pixel) - 4);
                 game_events.emplace_back(event_pixel);
+
                 send_to_all(players, observers, (char *)&event_pixel, sizeof(event_pixel));
             }
         }
@@ -301,6 +332,8 @@ namespace {
                 std::cout << x << " " << y << "  " << y * board_width + x << " <> " << board.size() << std::endl;
                 if (board[y * board_width + x] == EATEN || y > (board_height - 1) || x > (board_width - 1)) {
                     handle_player_elimination(player, players, game_in_progess, observers, game_events);
+                    if (!game_in_progess)
+                        return;
                 } else {
                     board[y * board_width + x] = EATEN;
                     event_pixel event_pixel{htobe32(sizeof(event_pixel) - 8),
@@ -309,19 +342,8 @@ namespace {
                                             htobe32(x), htobe32(y), 0};
                     event_pixel.crc32 = crc32buf((char *)&event_pixel, sizeof(event_player_eliminated) - 4);
                     game_events.emplace_back(event_pixel);
-                    for (auto &pair2: players) {
-                        player_info &client_player = pair.second;
-                        if (client_player.disconnected)
-                            continue;
 
-                        sendto(send_socket, (char *)&event_pixel, sizeof(event_pixel), 0,
-                               (sockaddr *)&client_player.address, sizeof(client_player.address));
-                    }
-                    for (auto &pair2: observers) {
-                        auto addr = pair2.second;
-                        sendto(send_socket, (char *)&event_pixel, sizeof(event_pixel), 0,
-                               (sockaddr *)&(addr), sizeof(addr));
-                    }
+                    send_to_all(players, observers, (char *)&event_pixel, sizeof(event_pixel));
                 }
             }
         }
@@ -382,7 +404,7 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
                   std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
     static char event_buf[550];
 
-    if (expected_event_no >= game_events.size()) {
+    if (expected_event_no < game_events.size()) {
         int total_size = 0;
         int size = 0;
 
@@ -394,13 +416,23 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
                 event_pixel pixel = *pixel_p;
                 strncpy(event_buf, (const char *)&pixel, sizeof(pixel));
                 size = sizeof(pixel);
+            } else if (auto elim_p = std::get_if<event_player_eliminated>(&event_variant)) {
+                event_player_eliminated elim = *elim_p;
+                strncpy(event_buf, (const char *)&elim, sizeof(elim));
+                size = sizeof(elim);
+            } else if (auto game_over_p = std::get_if<event_game_over>(&event_variant)) {
+                event_game_over game_over = *game_over_p;
+                strncpy(event_buf, (const char *)&game_over, sizeof(game_over));
+                size = sizeof(game_over);
             }
 
             if (total_size + size <= DATAGRAM_MAX_SIZE) {
                 strncpy(buf + total_size, (const char *)&buf, size);
                 total_size += size;
             } else {
-                // todo wysyłamy co mamy
+                sendto(send_socket, (char *)&buf, total_size, 0,
+                       (sockaddr *)(&client_address), sizeof(client_address));
+
                 send_history(i, client_address, buf, game_events);
             }
         }
@@ -409,11 +441,8 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
                (sockaddr *)(&client_address), sizeof(client_address));
     }
 }
-// czy jest jakiś ładny sposób na oddzielenie player_name jednego komunikatu od session_id kolejnego? Albo raczej przeczytanie dokładnie jednego datagramu, bo te mogę mieć różne długości
-int main(int argc, char *argv[]) {
-    //std::cout << std::sin(degree_to_radian(0)) << " " << std::cos(degree_to_radian(0)) << std::endl;
-    //std::cout << std::sin(degree_to_radian(90)) << " " << std::cos(degree_to_radian(90)) << std::endl;
 
+int main(int argc, char *argv[]) {
     port = DEFAULT_PORT;
     turning_speed = DEFAULT_TURNING_SPEED;
     rounds_per_sec = DEFAULT_ROUNDS_PER_SEC;
@@ -452,7 +481,7 @@ int main(int argc, char *argv[]) {
 
     create_timer(client[1].fd, true);
 
-    client[0].fd = socket(PF_INET6, SOCK_DGRAM, 0);
+    send_socket = client[0].fd = socket(PF_INET6, SOCK_DGRAM, 0);
     if (client[0].fd == -1)
         syserr("socket");
 
@@ -494,10 +523,10 @@ int main(int argc, char *argv[]) {
             /* Komunikat od klienta */
             std::cout << "Komunikat od klienta\n";
             // przetwarzamy część/wszystkie datagramy co doszły
-            // jak niepoprawny komunikat to ignore
+            // jak niepoprawny komunikat to ignorujemy
             // jak nieznany gracz to akceptujemy, update struktur danych
-            // jak znany gracz i mniejsze session_id to ignore
-            // jak znany gracz i >= session_id to git, update struktur danych
+            // jak znany gracz i mniejsze session_id to ignorujemy
+            // jak znany gracz i >= session_id to update struktur danych
 
             /* pętla for a nie while(true) żeby serwer nie był sparaliżowany np
              * masą połączęń i odłączeń obserwatorów którym trzeba wysłać sporą historię */
@@ -543,7 +572,7 @@ int main(int argc, char *argv[]) {
                     if (observers.find(session_id) == observers.end()) {
                         /* nowy obserwator */
                         observers.insert(std::pair(session_id, client_address));
-                        // todo wysyłamy historię eventów  itd
+
                         send_history(next_event, client_address, buf, game_events);
 
                         for (int i = 2; i < CLIENT_MAX; i++) {
@@ -555,7 +584,8 @@ int main(int argc, char *argv[]) {
                         }
                     } else {
                         /* stary obserwator */
-                        // todo wysyłamy brakującą historię (od expected event)
+                        send_history(next_event, client_address, buf, game_events);
+
                         int poll_position = client_poll_position[session_id];
                         update_timer(client[poll_position]);
                     }
@@ -569,17 +599,17 @@ int main(int argc, char *argv[]) {
                         continue;   // ignorujemy, znana sesja nie może ot tak zmienić nazwy gracza
 
                     player_ids.insert(std::pair(session_id, name));
-                    player_info new_player_info{false, -1, session_id, false,
-                                                false, 0, 0, 0};
-                    new_player_info.turn_direction = turn_direction;
+                    player_info new_player_info{false, -1, session_id, false,false,
+                                                0, 0, 0, turn_direction, client_address};
+
                     if (new_player_info.turn_direction != 0) {
                         new_player_info.ready = true;
                         ready_players++;
                     }
-                    new_player_info.address = client_address; // todo może kopiować trzeba
+
                     players.insert(std::pair(name, new_player_info));
 
-                    // todo wysyłamy mu historię
+                    send_history(next_event, client_address, buf, game_events);
 
                     for (int i = 2; i < CLIENT_MAX; i++) {
                         if (client[i].fd == -1) {
@@ -613,7 +643,7 @@ int main(int argc, char *argv[]) {
                     int poll_position = client_poll_position[session_id];
                     update_timer(client[poll_position]);
 
-                    // todo wysyłamy brakującą historię (od expected event)
+                    send_history(next_event, client_address, buf, game_events);
                 }
             }
         }
@@ -649,7 +679,7 @@ int main(int argc, char *argv[]) {
 
 
         if (client[1].revents & POLLIN) {
-            /* Czas przeliczyć turę bądź sprawdzić czy zaczynamy grę*/
+            /* Czas przeliczyć turę bądź sprawdzić czy zaczynamy grę */
             std::cout << "TURA\n";
             read(client[1].fd, &exp, sizeof(uint64_t));
             if (game_in_progress) {
@@ -659,7 +689,17 @@ int main(int argc, char *argv[]) {
                 init_game(game_id, players, observers, board, game_events, game_in_progress);
             }
 
-            if (!game_in_progress) {
+            bool player_in_game = false;
+            for (auto &pair : players) {
+                if (pair.second.in_game) {
+                    player_in_game = true;
+                    break;
+                }
+            }
+
+            if (!game_in_progress && player_in_game) {
+                // gra się właśnie zakończyła
+                std::cout << "\n\n GAME OVER \n\n";
                 game_events = std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>>();
                 for (auto &pair : players) {
                     player_info &player = pair.second;
