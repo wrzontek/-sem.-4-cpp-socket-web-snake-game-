@@ -12,7 +12,7 @@
 **  File: ARCCRC16.C
 */
 
-void init_crc_table(void);
+void init_crc_table();
 WORD crc_calc(WORD crc, char *buf, unsigned nbytes);
 void do_file(char *fn);
 

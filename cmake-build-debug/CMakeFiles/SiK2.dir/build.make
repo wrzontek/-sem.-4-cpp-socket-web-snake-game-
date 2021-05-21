@@ -77,22 +77,9 @@ include CMakeFiles/SiK2.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/SiK2.dir/flags.make
 
-CMakeFiles/SiK2.dir/crc.cpp.o: CMakeFiles/SiK2.dir/flags.make
-CMakeFiles/SiK2.dir/crc.cpp.o: ../crc.cpp
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/SiK2.dir/crc.cpp.o"
-	/usr/bin/c++.exe  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/SiK2.dir/crc.cpp.o -c /cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp
-
-CMakeFiles/SiK2.dir/crc.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/SiK2.dir/crc.cpp.i"
-	/usr/bin/c++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp > CMakeFiles/SiK2.dir/crc.cpp.i
-
-CMakeFiles/SiK2.dir/crc.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/SiK2.dir/crc.cpp.s"
-	/usr/bin/c++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp -o CMakeFiles/SiK2.dir/crc.cpp.s
-
 CMakeFiles/SiK2.dir/main.cpp.o: CMakeFiles/SiK2.dir/flags.make
 CMakeFiles/SiK2.dir/main.cpp.o: ../main.cpp
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/SiK2.dir/main.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/SiK2.dir/main.cpp.o"
 	/usr/bin/c++.exe  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/SiK2.dir/main.cpp.o -c /cygdrive/c/Users/Adrian/CLionProjects/SiK2/main.cpp
 
 CMakeFiles/SiK2.dir/main.cpp.i: cmake_force
@@ -103,16 +90,29 @@ CMakeFiles/SiK2.dir/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/SiK2.dir/main.cpp.s"
 	/usr/bin/c++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /cygdrive/c/Users/Adrian/CLionProjects/SiK2/main.cpp -o CMakeFiles/SiK2.dir/main.cpp.s
 
+CMakeFiles/SiK2.dir/crc.cpp.o: CMakeFiles/SiK2.dir/flags.make
+CMakeFiles/SiK2.dir/crc.cpp.o: ../crc.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/SiK2.dir/crc.cpp.o"
+	/usr/bin/c++.exe  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/SiK2.dir/crc.cpp.o -c /cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp
+
+CMakeFiles/SiK2.dir/crc.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/SiK2.dir/crc.cpp.i"
+	/usr/bin/c++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp > CMakeFiles/SiK2.dir/crc.cpp.i
+
+CMakeFiles/SiK2.dir/crc.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/SiK2.dir/crc.cpp.s"
+	/usr/bin/c++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp -o CMakeFiles/SiK2.dir/crc.cpp.s
+
 # Object files for target SiK2
 SiK2_OBJECTS = \
-"CMakeFiles/SiK2.dir/crc.cpp.o" \
-"CMakeFiles/SiK2.dir/main.cpp.o"
+"CMakeFiles/SiK2.dir/main.cpp.o" \
+"CMakeFiles/SiK2.dir/crc.cpp.o"
 
 # External object files for target SiK2
 SiK2_EXTERNAL_OBJECTS =
 
-SiK2.exe: CMakeFiles/SiK2.dir/crc.cpp.o
 SiK2.exe: CMakeFiles/SiK2.dir/main.cpp.o
+SiK2.exe: CMakeFiles/SiK2.dir/crc.cpp.o
 SiK2.exe: CMakeFiles/SiK2.dir/build.make
 SiK2.exe: CMakeFiles/SiK2.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable SiK2.exe"

@@ -168,21 +168,3 @@ DWORD crc32buf(char *buf, size_t len)
     return ~oldcrc32;
 
 }
-
-#ifdef TEST
-
-main(int argc, char *argv[])
-{
-      DWORD crc;
-      long charcnt;
-      register errors = 0;
-
-      while(--argc > 0)
-      {
-            errors |= crc32file(*++argv, &crc, &charcnt);
-            printf("%08lX %7ld %s\n", crc, charcnt, *argv);
-      }
-      return(errors != 0);
-}
-
-#endif /* TEST */

@@ -308,6 +308,7 @@ namespace {
     }
 
     void create_timer(int &fd, bool round) {
+        std::cout << "here" << std::endl;
         itimerspec new_value{};
         timespec now{};
         if (clock_gettime(CLOCK_REALTIME, &now) == -1)
@@ -330,7 +331,7 @@ namespace {
             syserr("timerfd_create");
 
         if (timerfd_settime(fd, TFD_TIMER_ABSTIME, &new_value, NULL) == -1)
-            syserr("timerfd_settime");
+            syserr("timerfd_settime create");
     }
 
     void update_timer(pollfd &client) {
@@ -346,7 +347,7 @@ namespace {
         new_value.it_interval.tv_nsec = 0;
 
         if (timerfd_settime(client.fd, TFD_TIMER_ABSTIME, &new_value, NULL) == -1)
-            syserr("timerfd_settime");
+            syserr("timerfd_settime update");
 
         uint64_t exp;
         if (client.revents & POLLIN) {
@@ -425,8 +426,6 @@ int main(int argc, char *argv[]) {
     client_msg in_msg{};
     uint64_t exp;
 
-    //init_crc_table();
-
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
     while (true) { // pracujemy aż coś się mocno nie zepsuje
@@ -455,13 +454,14 @@ int main(int argc, char *argv[]) {
                                (struct sockaddr *) &client_address, &rcva_len);
 
                 if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    std::cout << "BRAK" << std::endl;
                     // brak komunikatów do odebrania
                     // jeżeli z pętli wyjdziemy inaczej niż tu to
                     // być może są jeszcze komunikaty więc nie czyścimy revents
                     client[0].revents = 0;
                     break;
                 }
-
+                std::cout << "t = " << t << std::endl;
                 if (in_msg.turn_direction > 2)
                     continue;
 
@@ -498,6 +498,7 @@ int main(int argc, char *argv[]) {
                             if (client[i].fd == -1) {
                                 create_timer(client[i].fd, false);
                                 client_poll_position.insert(std::pair(session_id, i));
+                                break;
                             }
                         }
                     } else {
@@ -510,8 +511,8 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (players.find(name) == players.end()) {
-                    /* nieznany gracz */
-                    std::cout << "NIEZNANY GRACZ\n";
+                    /* nowy gracz */
+                    std::cout << "NOWY GRACZ\n";
                     if (player_ids.find(session_id) != player_ids.end())
                         continue;   // ignorujemy, znana sesja nie może ot tak zmienić nazwy gracza
 
@@ -532,12 +533,13 @@ int main(int argc, char *argv[]) {
                         if (client[i].fd == -1) {
                             create_timer(client[i].fd, false);
                             client_poll_position.insert(std::pair(session_id, i));
+                            break;
                         }
                     }
                 } else {
                     /* znany gracz */
                     player_info &player = players[name];
-                    if (session_id < player.id)
+                    if (session_id < player.id || players[name].disconnected)
                         continue;
                     else {
                         // update id i związanych struktur danych
@@ -585,7 +587,10 @@ int main(int argc, char *argv[]) {
                     std::string name = player_ids[client_session_id];
                     player_info &player = players[name];
                     player.disconnected = true;
-                    player_ids.erase(client_session_id);
+                    if (!game_in_progess) {
+                        player_ids.erase(client_session_id);
+                        players.erase(name);
+                    }
                 }
             }
         }
@@ -605,7 +610,7 @@ int main(int argc, char *argv[]) {
             }
 
             if (!game_in_progess) {
-                // koniec gry, czyścimy dane
+                // koniec gry, czyścimy dane i disconnected pleyerów
                 // TODO
             }
         }
