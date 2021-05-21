@@ -269,8 +269,7 @@ namespace {
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
 
-
-        // todo NEW_GAME wysłać wszystkim (poza disconnected)
+        
         send_new_game(players, observers, game_events);
 
         int n = 0;
@@ -411,7 +410,10 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
         for (int i = expected_event_no; i < game_events.size(); i++) {
             auto event_variant = game_events[1];
             if (auto new_game_p = std::get_if<event_new_game>(&event_variant)) {
-
+                // TODO poprawić pewnie
+                event_new_game new_game = *new_game_p;
+                strncpy(event_buf, (const char *)&new_game, new_game.len + 8);
+                size = new_game.len + 8;
             } else if (auto pixel_p = std::get_if<event_pixel>(&event_variant)) {
                 event_pixel pixel = *pixel_p;
                 strncpy(event_buf, (const char *)&pixel, sizeof(pixel));
