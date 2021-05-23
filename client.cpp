@@ -1,19 +1,24 @@
 #include <iostream>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <getopt.h>
 #include <cstring>
 #include <algorithm>
 #include <netdb.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <utmpx.h>
 #include "crc.h"
 #include "common.h"
 
 #define DEFAULT_GUI_PORT 20210
 
 namespace {
+    uint64_t session_id;
     int server_sock, gui_sock;
     std::string player_name;
+    char *server;
     char *server_port = NULL;
     char *gui_port = NULL;
     char *gui_addr_arg = NULL;
@@ -21,8 +26,10 @@ namespace {
     char default_server_port[] = "2021";
     char default_gui_port[] = "20210";
 
-    // address serwera, gui
-
+    char left_down[] = "LEFT_KEY_DOWN\n";
+    char left_up[] = "LEFT_KEY_UP\n";
+    char right_down[] = "RIGHT_KEY_DOWN\n";
+    char right_up[] = "RIGHTH_KEY_UP\n";
 
     void get_args(int argc, char *argv[]) {
         int opt;
@@ -70,39 +77,32 @@ namespace {
     }
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 2)
-        fatal("Arguments: game_server [-n player_name] [-p n] [-i gui_server] [-r n]\n");
-
+void net_init() {
     addrinfo addr_hints_server{}, addr_hints_gui{};
     addrinfo *addr_server_result, *addr_gui_result;
 
-//    sockaddr_in6 server_address;
-//    sockaddr_in6 gui_address;
-    player_name = ""; // puste oznacza obserwatora
-
-    get_args(argc - 1, argv + 1);
-
     init_hints(addr_hints_server, IPPROTO_UDP, SOCK_DGRAM);
 
-    if (getaddrinfo(argv[1], server_port, &addr_hints_server, &addr_server_result) != 0)
+    if (getaddrinfo(server, server_port, &addr_hints_server, &addr_server_result) != 0)
         syserr("getaddrinfo server");
-    
+
     server_sock = socket(addr_server_result->ai_family,
                          addr_server_result->ai_socktype,
                          addr_server_result->ai_protocol);
     if (server_sock < 0)
         syserr("socket server");
-    
+
     if (connect(server_sock, addr_server_result->ai_addr, addr_server_result->ai_addrlen))
         syserr("connect server");
 
     freeaddrinfo(addr_server_result);
 
-//    char buf[10] = "012345678";
-//    write(server_sock, buf, 10);
+    if (fcntl(server_sock, F_SETFL, fcntl(server_sock, F_GETFL, 0) | O_NONBLOCK) == -1)
+        syserr("fcntl server");
+
 
     init_hints(addr_hints_gui, IPPROTO_TCP, SOCK_STREAM);
+
     if (getaddrinfo(gui_addr_arg, gui_port, &addr_hints_gui, &addr_gui_result) != 0)
         syserr("getaddrinfo gui");
 
@@ -114,8 +114,45 @@ int main(int argc, char *argv[]) {
 
     if (connect(gui_sock, addr_gui_result->ai_addr, addr_gui_result->ai_addrlen))
         syserr("connect gui");
-    
+
     freeaddrinfo(addr_gui_result);
+
+    int on = 1;
+    setsockopt(gui_sock,IPPROTO_TCP, TCP_NODELAY,
+               (char *)&on, sizeof(int));
+
+    if (fcntl(gui_sock, F_SETFL, fcntl(gui_sock, F_GETFL, 0) | O_NONBLOCK) == -1)
+        syserr("fcntl gui");
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2)
+        fatal("Arguments: game_server [-n player_name] [-p n] [-i gui_server] [-r n]\n");
+
+    ssize_t len, rcv_len;
+    char command_buffer[30];
+    timeval tv;
+    gettimeofday(&tv,NULL);
+    session_id = 1000000 * tv.tv_sec + tv.tv_usec;
+
+    player_name = ""; // puste oznacza obserwatora
+    server = argv[1];
+    get_args(argc - 1, argv + 1);
+
+    net_init();
+
+/*    rcv_len = read(gui_sock, command_buffer, sizeof(command_buffer) - 1);
+    if (rcv_len < 0) {
+        syserr("read");
+    }
+
+    printf("read from socket: %zd bytes: %s\n", rcv_len, command_buffer);*/
+
+    client_msg hello_msg = {htobe64(session_id), 0, htobe32(0), 0};
+    for (int i = 0; i < player_name.size(); i++)
+        hello_msg.player_name[i] = player_name[i];
+
+    write(server_sock, (char *)&hello_msg, 13 + player_name.size());
 
     return 123;
 };
