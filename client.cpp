@@ -49,7 +49,7 @@ namespace {
 
     void init_hints(addrinfo &addr_hints) {
         (void) memset(&addr_hints, 0, sizeof(struct addrinfo));
-        addr_hints.ai_family = AF_INET6; // IPv6
+        addr_hints.ai_family = AF_INET; // IPv6
         addr_hints.ai_socktype = SOCK_DGRAM;
         addr_hints.ai_protocol = IPPROTO_UDP;
         addr_hints.ai_flags = 0;
@@ -86,14 +86,14 @@ int main(int argc, char *argv[]) {
     if (getaddrinfo(gui_addr_arg, NULL, &addr_hints_gui, &addr_gui_result) != 0)
         syserr("getaddrinfo gui");
 
-    server_address.sin_family = AF_INET6; // IPv6
+    server_address.sin_family = AF_INET; // IPv6
     server_address.sin_addr.s_addr =
             ((struct sockaddr_in*) (addr_server_result->ai_addr))->sin_addr.s_addr;
     server_address.sin_port = htons(server_port);
 
     freeaddrinfo(addr_server_result);
 
-    gui_address.sin_family = AF_INET6; // IPv6
+    gui_address.sin_family = AF_INET; // IPv6
     gui_address.sin_addr.s_addr =
             ((struct sockaddr_in*) (addr_gui_result->ai_addr))->sin_addr.s_addr;
     gui_address.sin_port = htons(gui_port);
@@ -101,16 +101,20 @@ int main(int argc, char *argv[]) {
     freeaddrinfo(addr_gui_result);
     
     std::cout << " sport: " << server_port << " gport: " << gui_port << std::endl;
-    std::cout << "name: " << player_name << " serverport: " << server_address.sin_port
-    << " guiport: " << gui_address.sin_port << std::endl;
+    std::cout << "name: " << player_name << " serverport: " << ntohs(server_address.sin_port)
+    << " guiport: " << ntohs(gui_address.sin_port) << std::endl;
     std::cout << " serveraddr: " << server_address.sin_addr.s_addr
                        << " guiaddr: " << gui_address.sin_addr.s_addr << std::endl;
 
     server_sock = socket(PF_INET6, SOCK_DGRAM, 0);
+    if (server_sock < 0)
+        syserr("socket server");
     gui_sock = socket(PF_INET6, SOCK_STREAM, 0);
+    if (gui_sock < 0)
+        syserr("socket gui");
 
     sendto(server_sock, player_name.c_str(), player_name.length(), 0,
-           (struct sockaddr *) &server_address, (socklen_t) sizeof(server_address));
+           (struct sockaddr *)&server_address, (socklen_t) sizeof(server_address));
 
     return 123;
 };
