@@ -17,16 +17,6 @@
 					<DistClean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
-			<Target title="rebuild_cache">
-				<Option working_dir="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug"/>
-				<Option type="4"/>
-				<MakeCommands>
-					<Build command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 rebuild_cache"/>
-					<CompileFile command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
-				</MakeCommands>
-			</Target>
 			<Target title="edit_cache">
 				<Option working_dir="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug"/>
 				<Option type="4"/>
@@ -37,8 +27,8 @@
 					<DistClean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
-			<Target title="SiK2">
-				<Option output="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/SiK2.exe" prefix_auto="0" extension_auto="0"/>
+			<Target title="client">
+				<Option output="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/client.exe" prefix_auto="0" extension_auto="0"/>
 				<Option working_dir="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug"/>
 				<Option object_output="./"/>
 				<Option type="1"/>
@@ -52,14 +42,14 @@
 					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/../../../../lib/../include/w32api"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 SiK2"/>
+					<Build command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 client"/>
 					<CompileFile command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
 					<Clean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 					<DistClean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
-			<Target title="SiK2/fast">
-				<Option output="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/SiK2.exe" prefix_auto="0" extension_auto="0"/>
+			<Target title="client/fast">
+				<Option output="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/client.exe" prefix_auto="0" extension_auto="0"/>
 				<Option working_dir="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug"/>
 				<Option object_output="./"/>
 				<Option type="1"/>
@@ -73,21 +63,86 @@
 					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/../../../../lib/../include/w32api"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 SiK2/fast"/>
+					<Build command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 client/fast"/>
+					<CompileFile command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="rebuild_cache">
+				<Option working_dir="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 rebuild_cache"/>
+					<CompileFile command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="serwer">
+				<Option output="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/serwer.exe" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="gcc"/>
+				<Compiler>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/include/c++"/>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/include/c++/x86_64-pc-cygwin"/>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/include/c++/backward"/>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/../../../../lib/../include/w32api"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 serwer"/>
+					<CompileFile command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="serwer/fast">
+				<Option output="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/serwer.exe" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="gcc"/>
+				<Compiler>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/include/c++"/>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/include/c++/x86_64-pc-cygwin"/>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/include/c++/backward"/>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/usr/lib/gcc/x86_64-pc-cygwin/10/../../../../lib/../include/w32api"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 serwer/fast"/>
 					<CompileFile command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
 					<Clean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 					<DistClean command="/usr/bin/make.exe -j4 -f &quot;/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 		</Build>
+		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/client.cpp">
+			<Option target="client"/>
+		</Unit>
+		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/common.cpp">
+			<Option target="client"/>
+			<Option target="serwer"/>
+		</Unit>
+		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/common.h">
+			<Option target="client"/>
+			<Option target="serwer"/>
+		</Unit>
 		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp">
-			<Option target="SiK2"/>
+			<Option target="client"/>
+			<Option target="serwer"/>
 		</Unit>
 		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.h">
-			<Option target="SiK2"/>
+			<Option target="client"/>
+			<Option target="serwer"/>
 		</Unit>
-		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/main.cpp">
-			<Option target="SiK2"/>
+		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/serwer.cpp">
+			<Option target="serwer"/>
 		</Unit>
 		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/CMakeLists.txt">
 			<Option virtualFolder="CMake Files\"/>

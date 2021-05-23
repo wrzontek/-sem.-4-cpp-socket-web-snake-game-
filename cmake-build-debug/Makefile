@@ -76,17 +76,6 @@ CMAKE_BINARY_DIR = /cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug
 #=============================================================================
 # Targets provided globally by CMake.
 
-# Special rule for the target rebuild_cache
-rebuild_cache:
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "Running CMake to regenerate build system..."
-	/cygdrive/c/Users/Adrian/AppData/Local/JetBrains/CLion2020.3/cygwin_cmake/bin/cmake.exe --regenerate-during-build -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)
-.PHONY : rebuild_cache
-
-# Special rule for the target rebuild_cache
-rebuild_cache/fast: rebuild_cache
-
-.PHONY : rebuild_cache/fast
-
 # Special rule for the target edit_cache
 edit_cache:
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "No interactive CMake dialog available..."
@@ -97,6 +86,17 @@ edit_cache:
 edit_cache/fast: edit_cache
 
 .PHONY : edit_cache/fast
+
+# Special rule for the target rebuild_cache
+rebuild_cache:
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "Running CMake to regenerate build system..."
+	/cygdrive/c/Users/Adrian/AppData/Local/JetBrains/CLion2020.3/cygwin_cmake/bin/cmake.exe --regenerate-during-build -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)
+.PHONY : rebuild_cache
+
+# Special rule for the target rebuild_cache
+rebuild_cache/fast: rebuild_cache
+
+.PHONY : rebuild_cache/fast
 
 # The main all target
 all: cmake_check_build_system
@@ -131,17 +131,87 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named SiK2
+# Target rules for targets named client
 
 # Build rule for target.
-SiK2: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 SiK2
-.PHONY : SiK2
+client: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client
+.PHONY : client
 
 # fast build rule for target.
-SiK2/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/build
-.PHONY : SiK2/fast
+client/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/build
+.PHONY : client/fast
+
+#=============================================================================
+# Target rules for targets named serwer
+
+# Build rule for target.
+serwer: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 serwer
+.PHONY : serwer
+
+# fast build rule for target.
+serwer/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/build
+.PHONY : serwer/fast
+
+client.o: client.cpp.o
+
+.PHONY : client.o
+
+# target to build an object file
+client.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/client.cpp.o
+.PHONY : client.cpp.o
+
+client.i: client.cpp.i
+
+.PHONY : client.i
+
+# target to preprocess a source file
+client.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/client.cpp.i
+.PHONY : client.cpp.i
+
+client.s: client.cpp.s
+
+.PHONY : client.s
+
+# target to generate assembly for a file
+client.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/client.cpp.s
+.PHONY : client.cpp.s
+
+common.o: common.cpp.o
+
+.PHONY : common.o
+
+# target to build an object file
+common.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/common.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/common.cpp.o
+.PHONY : common.cpp.o
+
+common.i: common.cpp.i
+
+.PHONY : common.i
+
+# target to preprocess a source file
+common.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/common.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/common.cpp.i
+.PHONY : common.cpp.i
+
+common.s: common.cpp.s
+
+.PHONY : common.s
+
+# target to generate assembly for a file
+common.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/common.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/common.cpp.s
+.PHONY : common.cpp.s
 
 crc.o: crc.cpp.o
 
@@ -149,7 +219,8 @@ crc.o: crc.cpp.o
 
 # target to build an object file
 crc.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/crc.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/crc.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/crc.cpp.o
 .PHONY : crc.cpp.o
 
 crc.i: crc.cpp.i
@@ -158,7 +229,8 @@ crc.i: crc.cpp.i
 
 # target to preprocess a source file
 crc.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/crc.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/crc.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/crc.cpp.i
 .PHONY : crc.cpp.i
 
 crc.s: crc.cpp.s
@@ -167,35 +239,36 @@ crc.s: crc.cpp.s
 
 # target to generate assembly for a file
 crc.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/crc.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/crc.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/crc.cpp.s
 .PHONY : crc.cpp.s
 
-main.o: main.cpp.o
+serwer.o: serwer.cpp.o
 
-.PHONY : main.o
+.PHONY : serwer.o
 
 # target to build an object file
-main.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/main.cpp.o
-.PHONY : main.cpp.o
+serwer.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/serwer.cpp.o
+.PHONY : serwer.cpp.o
 
-main.i: main.cpp.i
+serwer.i: serwer.cpp.i
 
-.PHONY : main.i
+.PHONY : serwer.i
 
 # target to preprocess a source file
-main.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/main.cpp.i
-.PHONY : main.cpp.i
+serwer.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/serwer.cpp.i
+.PHONY : serwer.cpp.i
 
-main.s: main.cpp.s
+serwer.s: serwer.cpp.s
 
-.PHONY : main.s
+.PHONY : serwer.s
 
 # target to generate assembly for a file
-main.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/main.cpp.s
-.PHONY : main.cpp.s
+serwer.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/serwer.cpp.s
+.PHONY : serwer.cpp.s
 
 # Help Target
 help:
@@ -205,13 +278,20 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... SiK2"
+	@echo "... client"
+	@echo "... serwer"
+	@echo "... client.o"
+	@echo "... client.i"
+	@echo "... client.s"
+	@echo "... common.o"
+	@echo "... common.i"
+	@echo "... common.s"
 	@echo "... crc.o"
 	@echo "... crc.i"
 	@echo "... crc.s"
-	@echo "... main.o"
-	@echo "... main.i"
-	@echo "... main.s"
+	@echo "... serwer.o"
+	@echo "... serwer.i"
+	@echo "... serwer.s"
 .PHONY : help
 
 

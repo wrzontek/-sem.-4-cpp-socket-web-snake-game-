@@ -4,6 +4,8 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
+  "/cygdrive/c/Users/Adrian/CLionProjects/SiK2/client.cpp" "/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles/SiK2.dir/client.cpp.o"
+  "/cygdrive/c/Users/Adrian/CLionProjects/SiK2/common.cpp" "/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles/SiK2.dir/common.cpp.o"
   "/cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp" "/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles/SiK2.dir/crc.cpp.o"
   "/cygdrive/c/Users/Adrian/CLionProjects/SiK2/main.cpp" "/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles/SiK2.dir/main.cpp.o"
   )

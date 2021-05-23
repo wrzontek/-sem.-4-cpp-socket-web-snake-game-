@@ -73,7 +73,8 @@ CMAKE_BINARY_DIR = /cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug
 # Directory level rules for the build root directory
 
 # The main recursive "all" target.
-all: CMakeFiles/SiK2.dir/all
+all: CMakeFiles/client.dir/all
+all: CMakeFiles/serwer.dir/all
 
 .PHONY : all
 
@@ -83,36 +84,64 @@ preinstall:
 .PHONY : preinstall
 
 # The main recursive "clean" target.
-clean: CMakeFiles/SiK2.dir/clean
+clean: CMakeFiles/client.dir/clean
+clean: CMakeFiles/serwer.dir/clean
 
 .PHONY : clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/SiK2.dir
+# Target rules for target CMakeFiles/client.dir
 
 # All Build rule for target.
-CMakeFiles/SiK2.dir/all:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/depend
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles --progress-num=1,2,3 "Built target SiK2"
-.PHONY : CMakeFiles/SiK2.dir/all
+CMakeFiles/client.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles --progress-num=1,2,3,4 "Built target client"
+.PHONY : CMakeFiles/client.dir/all
 
 # Build rule for subdir invocation for target.
-CMakeFiles/SiK2.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles 3
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/SiK2.dir/all
+CMakeFiles/client.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles 4
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/client.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles 0
-.PHONY : CMakeFiles/SiK2.dir/rule
+.PHONY : CMakeFiles/client.dir/rule
 
 # Convenience name for target.
-SiK2: CMakeFiles/SiK2.dir/rule
+client: CMakeFiles/client.dir/rule
 
-.PHONY : SiK2
+.PHONY : client
 
 # clean rule for target.
-CMakeFiles/SiK2.dir/clean:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/SiK2.dir/build.make CMakeFiles/SiK2.dir/clean
-.PHONY : CMakeFiles/SiK2.dir/clean
+CMakeFiles/client.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/clean
+.PHONY : CMakeFiles/client.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/serwer.dir
+
+# All Build rule for target.
+CMakeFiles/serwer.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles --progress-num=5,6,7,8 "Built target serwer"
+.PHONY : CMakeFiles/serwer.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/serwer.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles 4
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/serwer.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /cygdrive/c/Users/Adrian/CLionProjects/SiK2/cmake-build-debug/CMakeFiles 0
+.PHONY : CMakeFiles/serwer.dir/rule
+
+# Convenience name for target.
+serwer: CMakeFiles/serwer.dir/rule
+
+.PHONY : serwer
+
+# clean rule for target.
+CMakeFiles/serwer.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/clean
+.PHONY : CMakeFiles/serwer.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

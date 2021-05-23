@@ -2,11 +2,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <fstream>
 #include <vector>
 #include <string>
 #include <fcntl.h>
-#include <cstdarg>
 #include <getopt.h>
 #include <cstring>
 #include <map>
@@ -16,68 +14,25 @@
 #include <variant>
 #include <sys/timerfd.h>
 #include "crc.h"
-#include <set>
+#include "common.h"
 #include <cassert>
 
-
-#define MAX_PLAYERS 25
-#define DEFAULT_PORT 2021
 #define DEFAULT_TURNING_SPEED 6
 #define DEFAULT_ROUNDS_PER_SEC 50
 #define DEFAULT_BOARD_WIDTH 640
 #define DEFAULT_BOARD_HEIGHT 480
 
-#define NOT_EATEN false
-#define EATEN true
-#define TURN_RIGHT 1
-#define TURN_LEFT 2
-
-#define NAME_LEN_MAX 20
 #define CLIENT_MAX (2 +  MAX_PLAYERS)
 #define MAX_CONSECUTIVE_CLIENT_MSG 20
 #define CLIENT_TIMEOUT_SECONDS 5
 // todo ^ na 2
-#define TYPE_NEW_GAME 0
-#define TYPE_PIXEL 1
-#define TYPE_PLAYER_ELIMINATED 2
-#define TYPE_GAME_OVER 3
+
 
 #define DATAGRAM_MAX_SIZE 65508
 
 namespace {
     uint64_t my_rand;
     int port, turning_speed, rounds_per_sec, board_width, board_height, send_socket;
-
-    /* funkcja syserr z laboratoriów */
-    void syserr(const char *fmt, ...) {
-        va_list fmt_args;
-        int err;
-
-        fprintf(stderr, "ERROR: ");
-        err = errno;
-
-        va_start(fmt_args, fmt);
-        if (vfprintf(stderr, fmt, fmt_args) < 0) {
-            fprintf(stderr, " (also error in syserr) ");
-        }
-        va_end(fmt_args);
-        fprintf(stderr, " (%d; %s)\n", err, strerror(err));
-        exit(EXIT_FAILURE);
-    }
-
-    /* funkcja fatal z laboratoriów */
-    void fatal(const char *fmt, ...) {
-        va_list fmt_args;
-
-        fprintf(stderr, "ERROR: ");
-
-        va_start(fmt_args, fmt);
-        vfprintf(stderr, fmt, fmt_args);
-        va_end (fmt_args);
-
-        fprintf(stderr, "\n");
-        exit(EXIT_FAILURE);
-    }
 
     /* https://stackoverflow.com/questions/31502120/sin-and-cos-give-unexpected-results-for-well-known-angles */
     inline double degree_to_radian(double d) {
@@ -103,54 +58,6 @@ namespace {
         sockaddr_in6 address;
     };
 
-    struct __attribute__((__packed__)) client_msg {
-        uint64_t session_id;
-        uint8_t turn_direction;
-        uint32_t next_expected_event_no;
-        uint8_t player_name[NAME_LEN_MAX];
-    };
-
-    // TODO zobacz czy len napewno 32bity
-    struct __attribute__((__packed__)) event_new_game {
-        uint32_t len;
-        uint32_t event_no;
-        uint8_t event_type;
-
-        uint32_t maxx;
-        uint32_t maxy;
-        uint8_t list_and_crc[21 * MAX_PLAYERS + 4];
-    };
-
-    struct __attribute__((__packed__)) event_pixel {
-        uint32_t len;
-        uint32_t event_no;
-        uint8_t event_type;
-
-        uint8_t player_number;
-        uint32_t x;
-        uint32_t y;
-
-        uint32_t crc32;
-    };
-
-    struct __attribute__((__packed__)) event_player_eliminated {
-        uint32_t len;
-        uint32_t event_no;
-        uint8_t event_type;
-
-        uint8_t player_number;
-
-        uint32_t crc32;
-    };
-
-    struct __attribute__((__packed__)) event_game_over {
-        uint32_t len;
-        uint32_t event_no;
-        uint8_t event_type;
-
-        uint32_t crc32;
-    };
-
     void get_args(int argc, char *argv[]) {
         int opt;
         while ((opt = getopt(argc, argv, "p:s:t:v:w:h:")) != -1) {
@@ -174,7 +81,7 @@ namespace {
                     board_height = atoi(optarg);
                     break;
                 default:
-                    fatal("Usage: %s [-p n] [-s n] [-t n] [-v n] [-w n] [-h n]\n");
+                    fatal("Arguments: [-p n] [-s n] [-t n] [-v n] [-w n] [-h n]\n");
             }
         }
     }
@@ -236,6 +143,7 @@ namespace {
     void send_new_game(std::map<std::string, player_info> &players,
                        std::map<uint64_t, sockaddr_in6> &observers,
                        std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
+        std::cout << "SENDING NEW GAME\n";
         std::string player_list;
         for (auto &pair : players) {
             std::string name = pair.first;
@@ -243,21 +151,21 @@ namespace {
         }
         player_list[player_list.size() - 1] = '\0';
 
-        event_new_game event_new_game{htobe32(13 + player_list.size()) + 4,
+        event_new_game event_new_game{htobe32(17 + player_list.size()),
                                       htobe32(game_events.size()), TYPE_NEW_GAME,
-                                      htobe32(board_width), htonl(board_height),};
-
-        uint32_t crc32 = htobe32(crc32buf((char *)&event_new_game, 13 + player_list.size()));
+                                      htobe32(board_width), htobe32(board_height), 0};
 
         for (int i = 0; i < player_list.size(); i++)
             event_new_game.list_and_crc[i] = player_list[i];
 
+        uint32_t crc32 = htobe32(crc32buf((char *)&event_new_game, 17 + player_list.size()));
+
         // todo tutaj te wskaźniki kopiowanka dziwne poprawić
-        strncpy((char *)&event_new_game + 13 + player_list.size(), (char *)&crc32, sizeof(crc32));
+        strncpy((char *)&event_new_game + 17 + player_list.size(), (char *)&crc32, sizeof(crc32));
 
         game_events.emplace_back(event_new_game);
-
-        send_to_all(players, observers, (char *)&event_new_game, sizeof(event_game_over));
+        std::cout << "size: " << 21 + player_list.size() << std::endl;
+        send_to_all(players, observers, (char *)&event_new_game, 21 + player_list.size());
     }
 
 
@@ -445,7 +353,7 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
 }
 
 int main(int argc, char *argv[]) {
-    port = DEFAULT_PORT;
+    port = DEFAULT_SERVER_PORT;
     turning_speed = DEFAULT_TURNING_SPEED;
     rounds_per_sec = DEFAULT_ROUNDS_PER_SEC;
     board_width = DEFAULT_BOARD_WIDTH;
@@ -563,7 +471,7 @@ int main(int argc, char *argv[]) {
                     }
                     name += c;
                 }
-                if (invalid_msg)
+                if (invalid_msg || name.length() > MAX_NAME_LEN)
                     continue;
 
                 std::cout << name << std::endl;
@@ -653,7 +561,7 @@ int main(int argc, char *argv[]) {
         // iteracja po timerach graczy
         for (int i = 2; i < CLIENT_MAX; i++) {
             if (client[i].revents & POLLIN) {
-                read(client[i].fd, &exp, sizeof(uint64_t));
+                ret = read(client[i].fd, &exp, sizeof(uint64_t));
                 std::cout << "disconnecting client\n";
                 client[i].fd = -1;
                 uint64_t client_session_id;

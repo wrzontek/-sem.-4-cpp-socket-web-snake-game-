@@ -1,1 +1,1 @@
-/usr/bin/c++.exe -g  -Wl,--enable-auto-import CMakeFiles/SiK2.dir/main.cpp.o CMakeFiles/SiK2.dir/crc.cpp.o  -o SiK2.exe -Wl,--out-implib,libSiK2.dll.a -Wl,--major-image-version,0,--minor-image-version,0 
+/usr/bin/c++.exe -g  -Wl,--enable-auto-import CMakeFiles/SiK2.dir/main.cpp.o CMakeFiles/SiK2.dir/crc.cpp.o CMakeFiles/SiK2.dir/client.cpp.o CMakeFiles/SiK2.dir/common.cpp.o  -o SiK2.exe -Wl,--out-implib,libSiK2.dll.a -Wl,--major-image-version,0,--minor-image-version,0 
