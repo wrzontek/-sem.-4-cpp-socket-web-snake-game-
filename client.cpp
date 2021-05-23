@@ -9,10 +9,12 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <utmpx.h>
+#include <poll.h>
 #include "crc.h"
 #include "common.h"
 
-#define DEFAULT_GUI_PORT 20210
+#define MAX_CONSECUTIVE_SERVER_MSG 10
+#define MAX_CONSECUTIVE_GUI_MSG 50
 
 namespace {
     uint64_t session_id;
@@ -25,11 +27,6 @@ namespace {
     char default_gui_addr[] = "localhost";
     char default_server_port[] = "2021";
     char default_gui_port[] = "20210";
-
-    char left_down[] = "LEFT_KEY_DOWN\n";
-    char left_up[] = "LEFT_KEY_UP\n";
-    char right_down[] = "RIGHT_KEY_DOWN\n";
-    char right_up[] = "RIGHTH_KEY_UP\n";
 
     void get_args(int argc, char *argv[]) {
         int opt;
@@ -125,13 +122,39 @@ void net_init() {
         syserr("fcntl gui");
 }
 
+void init_poll(pollfd client[]) {
+    for (int i = 0; i <= 2; i++) {
+        client[i].events = POLLIN;
+        client[i].revents = 0;
+    }
+
+    client[0].fd = server_sock;
+    client[1].fd = gui_sock;
+
+    create_timer(client[2].fd, TIMER_SEND_UPDATE, -1);
+}
+
+std::string my_getline(std::string &buf_str) {
+    if (buf_str.empty())
+        return buf_str;
+
+    std::size_t pos = buf_str.find('\n');
+    if (pos == std::string::npos) {
+        // nie znaleziono \n
+        return "";
+    }
+    else {
+        std::string line = buf_str.substr(0, pos);
+        buf_str.erase(0, pos + 1);
+        return line;
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2)
         fatal("Arguments: game_server [-n player_name] [-p n] [-i gui_server] [-r n]\n");
 
-    ssize_t len, rcv_len;
-    char command_buffer[30];
-    timeval tv;
+    timeval tv{};
     gettimeofday(&tv,NULL);
     session_id = 1000000 * tv.tv_sec + tv.tv_usec;
 
@@ -141,18 +164,154 @@ int main(int argc, char *argv[]) {
 
     net_init();
 
-/*    rcv_len = read(gui_sock, command_buffer, sizeof(command_buffer) - 1);
+/*    rcv_len = read(gui_sock, command_buf, sizeof(command_buf) - 1);
     if (rcv_len < 0) {
         syserr("read");
     }
 
-    printf("read from socket: %zd bytes: %s\n", rcv_len, command_buffer);*/
+    printf("read from socket: %zd bytes: %s\n", rcv_len, command_buf);*/
 
-    client_msg hello_msg = {htobe64(session_id), 0, htobe32(0), 0};
+    pollfd client[3];   // 0 - serwer, 1 - gui, 2 - timer
+    init_poll(client);
+
+    uint8_t turn_direction = 0;
+    // set czy tam mapa graczy
+    uint32_t maxx;
+    uint32_t maxy;
+    uint32_t expected_event_no = 0;
+    int last_key_down = 0;
+
+    client_msg msg_to_server = {htobe64(session_id), turn_direction, htobe32(expected_event_no), 0};
     for (int i = 0; i < player_name.size(); i++)
-        hello_msg.player_name[i] = player_name[i];
+        msg_to_server.player_name[i] = player_name[i];
 
-    write(server_sock, (char *)&hello_msg, 13 + player_name.size());
+    write(server_sock, (char *)&msg_to_server, 13 + player_name.size());
 
-    return 123;
+    char command_buf[20];    // na "LEFT_KEY_DOWN\n" itp
+    char *buf = (char *)calloc(DATAGRAM_MAX_SIZE, 1);
+    if (buf == NULL)
+        syserr("calloc");
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "EndlessLoop"
+    while (true) {
+        int ret = poll(client, 3, -1);
+
+        if (ret <= 0)   // timer powinien nas budzić co CLIENT_TIMEOUT_SECONDS
+            syserr("poll or timer");
+
+        if (client[0].revents & POLLIN) {
+            std::cout << "WIADOMOŚĆ OD SERWERA\n";
+            for (int t = 0; t < MAX_CONSECUTIVE_SERVER_MSG; t++) {
+                // limit żeby gra była responsive na input gracza
+                ret = read(client[0].fd, buf, sizeof(buf) - 1);
+
+                if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    std::cout << "BRAK" << std::endl;
+                    // brak komunikatów do odebrania więc zerujemy revents
+                    client[0].revents = 0;
+                    break;
+                }
+
+                while (ret > 0) {
+                    uint32_t len = be32toh((uint32_t) *(buf));
+                    uint8_t event_type = (uint8_t) *(buf + 8);
+
+                    uint32_t my_crc32 = crc32buf(buf, len + 4);
+                    uint32_t sent_crc32 = htobe32((uint32_t) *(buf + len + 4)); // ???
+                    std::cout << "crc32: " << my_crc32 << " " << sent_crc32 << std::endl;
+                    std::cout << "len and type: " << len << " " << event_type << std::endl;
+
+                    if (my_crc32 != sent_crc32)
+                        break;
+
+                    switch (event_type) {
+                        case TYPE_NEW_GAME:
+                            // event_no musi być 0
+                            std::cout << "NEW GAME\n";
+                            break;
+                        case TYPE_PLAYER_ELIMINATED:
+                            std::cout << "PLAYER ELIMINATED\n";
+                            break;
+                        case TYPE_GAME_OVER:
+                            expected_event_no = 0;
+                            std::cout << "GAME OVER\n";
+                            break;
+                        case TYPE_PIXEL:
+                            std::cout << "PIXEL\n";
+                            break;
+                        default:
+                            std::cout << "UNKNOWN, ignoring\n";
+                            break;
+                    }
+                    return 0;
+                    // jeśli poprawny evencik i event_no = expected to wysyłamy do gui i expected++
+                    // i sprawdzamy czy kolejny event mamy zapisany, jak tak to wysyłamy wszystkie takie
+
+                    // jeśli poprawny evencik ale event_no > expected to zapisujemy se i wyślemy potem
+
+                    ret -= ((int)len + 4);
+                }
+            }
+        }
+
+        if (client[1].revents & POLLIN) {
+            std::cout << "WIADOMOŚĆ OD GUI\n";
+            for (int t = 0; t < MAX_CONSECUTIVE_GUI_MSG; t++) {
+                // limit żeby gui nas nie sparaliżowało
+                ret = read(client[1].fd, command_buf, sizeof(command_buf) - 1);
+
+                if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    std::cout << "BRAK" << std::endl;
+                    // brak komunikatów do odebrania więc zerujemy revents
+                    client[1].revents = 0;
+                    break;
+                }
+
+
+                std::string command_buf_str(command_buf, ret);
+
+                while (ret > 0) {
+                    std::string command = my_getline(command_buf_str);
+
+                    std::cout << ret << " " << command << std::endl;
+
+                    if (command.empty())
+                        break;
+
+                    if (command == "LEFT_KEY_DOWN") {
+                        turn_direction = TURN_LEFT;
+                        last_key_down = TURN_LEFT;
+                    } else if (command == "RIGHT_KEY_DOWN") {
+                        turn_direction = TURN_RIGHT;
+                        last_key_down = TURN_RIGHT;
+                    } else if ((command == "LEFT_KEY_UP" && last_key_down == TURN_LEFT) ||
+                               (command == "RIGHT_KEY_UP" && last_key_down == TURN_RIGHT)) {
+                        turn_direction = 0;
+                        last_key_down = 0;
+                    }
+
+                    ret -= ((int)command.size() + 1);
+                }
+            }
+        }
+
+        if (client[2].revents & POLLIN) {
+            client[2].revents = 0;
+            //std::cout << "timer up, sending to server\n";
+            uint64_t exp;
+            ret = read(client[2].fd, &exp, sizeof(uint64_t));
+            if (ret != sizeof(uint64_t))
+                syserr("timer");
+
+            msg_to_server = {htobe64(session_id), turn_direction, htobe32(expected_event_no), 0};
+            for (int i = 0; i < player_name.size(); i++)
+                msg_to_server.player_name[i] = player_name[i];
+
+            write(server_sock, (char *)&msg_to_server, 13 + player_name.size());
+        }
+    }
+#pragma clang diagnostic pop
+
+    return 0;
 };

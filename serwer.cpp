@@ -24,11 +24,6 @@
 
 #define CLIENT_MAX (2 +  MAX_PLAYERS)
 #define MAX_CONSECUTIVE_CLIENT_MSG 20
-#define CLIENT_TIMEOUT_SECONDS 5
-// todo ^ na 2
-
-
-#define DATAGRAM_MAX_SIZE 65508
 
 namespace {
     uint64_t my_rand;
@@ -64,21 +59,33 @@ namespace {
             switch (opt) {
                 case 'p':
                     port = atoi(optarg);
+                    if (port < 2 || port > 65535)
+                        fatal("invalid port argument");
                     break;
                 case 's':
                     my_rand = atoi(optarg);
+                    if (my_rand < 1 || my_rand > 4294967295)
+                        fatal("invalid seed argument");
                     break;
                 case 't':
                     turning_speed = atoi(optarg);
+                    if (turning_speed < 1 || turning_speed > 90)
+                        fatal("invalid turning speed argument");
                     break;
                 case 'v':
                     rounds_per_sec = atoi(optarg);
+                    if (rounds_per_sec < 1 || rounds_per_sec > 250)
+                        fatal("invalid rounds per second argument");
                     break;
                 case 'w':
                     board_width = atoi(optarg);
+                    if (board_width < 1 || board_width > 4096)
+                        fatal("invalid board width argument");
                     break;
                 case 'h':
                     board_height = atoi(optarg);
+                    if (board_height < 1 || board_height > 4096)
+                        fatal("invalid board height argument");
                     break;
                 default:
                     fatal("Arguments: [-p n] [-s n] [-t n] [-v n] [-w n] [-h n]\n");
@@ -177,7 +184,7 @@ namespace {
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
 
-        
+
         send_new_game(players, observers, game_events);
 
         int n = 0;
@@ -204,7 +211,7 @@ namespace {
                                         htobe32((uint32_t)game_events.size()),
                                         TYPE_PIXEL, (uint8_t)player.number,
                                         htobe32(x), htobe32(y), 0};
-                event_pixel.crc32 = crc32buf((char *)&event_pixel, sizeof(event_pixel) - 4);
+                event_pixel.crc32 = htobe32(crc32buf((char *)&event_pixel, sizeof(event_pixel) - 4));
                 game_events.emplace_back(event_pixel);
 
                 send_to_all(players, observers, (char *)&event_pixel, sizeof(event_pixel));
@@ -247,40 +254,13 @@ namespace {
                                             htobe32((uint32_t)game_events.size()),
                                             TYPE_PIXEL, (uint8_t)player.number,
                                             htobe32(x), htobe32(y), 0};
-                    event_pixel.crc32 = crc32buf((char *)&event_pixel, sizeof(event_player_eliminated) - 4);
+                    event_pixel.crc32 = htobe32(crc32buf((char *)&event_pixel, sizeof(event_player_eliminated) - 4));
                     game_events.emplace_back(event_pixel);
 
                     send_to_all(players, observers, (char *)&event_pixel, sizeof(event_pixel));
                 }
             }
         }
-    }
-
-    void create_timer(int &fd, bool round) {
-        std::cout << "here" << std::endl;
-        itimerspec new_value{};
-        timespec now{};
-        if (clock_gettime(CLOCK_REALTIME, &now) == -1)
-            syserr("clock_gettime");
-
-        if (round) {
-            new_value.it_value.tv_sec = now.tv_sec;
-            new_value.it_value.tv_nsec = now.tv_nsec;
-            new_value.it_interval.tv_sec = 1;
-            new_value.it_interval.tv_nsec = 1000000000 / rounds_per_sec;
-        } else {
-            new_value.it_value.tv_sec = now.tv_sec + CLIENT_TIMEOUT_SECONDS;
-            new_value.it_value.tv_nsec = now.tv_nsec;
-            new_value.it_interval.tv_sec = CLIENT_TIMEOUT_SECONDS;
-            new_value.it_interval.tv_nsec = 0;
-        }
-
-        fd = timerfd_create(CLOCK_REALTIME, 0);
-        if (fd == -1)
-            syserr("timerfd_create");
-
-        if (timerfd_settime(fd, TFD_TIMER_ABSTIME, &new_value, NULL) == -1)
-            syserr("timerfd_settime create");
     }
 
     void update_timer(pollfd &client) {
@@ -303,7 +283,6 @@ namespace {
             client.revents = 0;
             read(client.fd, &exp, sizeof(uint64_t));
         }
-
     }
 }
 
@@ -389,7 +368,7 @@ int main(int argc, char *argv[]) {
         client[i].revents = 0;
     }
 
-    create_timer(client[1].fd, true);
+    create_timer(client[1].fd, TIMER_ROUND, rounds_per_sec);
 
     send_socket = client[0].fd = socket(PF_INET6, SOCK_DGRAM, 0);
     if (client[0].fd == -1)
@@ -424,7 +403,7 @@ int main(int argc, char *argv[]) {
         for (int i = 1; i < CLIENT_MAX; i++)
             client[i].revents = 0;
 
-        int ret = poll(client, CLIENT_MAX, 5000);
+        int ret = poll(client, CLIENT_MAX, -1);
 
         if (ret <= 0) // zawsze będzie budzić poll co najmniej timer tury
             syserr("poll or timer");
@@ -446,12 +425,13 @@ int main(int argc, char *argv[]) {
                                (struct sockaddr *) &client_address, &rcva_len);
 
                 if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                    std::cout << "BRAK" << std::endl;
                     // brak komunikatów do odebrania więc zerujemy revents
                     client[0].revents = 0;
                     break;
                 }
-                std::cout << "t = " << t << std::endl;
+                if (ret == -1)
+                    syserr("error in gui");
+
                 if (in_msg.turn_direction > 2)
                     continue;
 
@@ -459,12 +439,11 @@ int main(int argc, char *argv[]) {
                 uint32_t next_event = in_msg.next_expected_event_no = be32toh(in_msg.next_expected_event_no);
                 uint8_t turn_direction = in_msg.turn_direction;
 
-                std::cout << session_id << " " << next_event << " " << turn_direction << std::endl;
+                std::cout << "id: " << session_id << " expected event: " << next_event << " direction: " << (int)turn_direction << std::endl;
                 std::string name;
                 bool invalid_msg = false;
                 for (int i = 0; i < ret - 13; i++) {
                     uint8_t c = in_msg.player_name[i];
-                    std::cout << i << " znak " << c << std::endl;
                     if (c < 33 || c > 126) {
                         invalid_msg = true;
                         break;
@@ -487,7 +466,7 @@ int main(int argc, char *argv[]) {
 
                         for (int i = 2; i < CLIENT_MAX; i++) {
                             if (client[i].fd == -1) {
-                                create_timer(client[i].fd, false);
+                                create_timer(client[i].fd, TIMER_TIMEOUT, -1);
                                 client_poll_position.insert(std::pair(session_id, i));
                                 break;
                             }
@@ -523,13 +502,14 @@ int main(int argc, char *argv[]) {
 
                     for (int i = 2; i < CLIENT_MAX; i++) {
                         if (client[i].fd == -1) {
-                            create_timer(client[i].fd, false);
+                            create_timer(client[i].fd, TIMER_TIMEOUT, -1);
                             client_poll_position.insert(std::pair(session_id, i));
                             break;
                         }
                     }
                 } else {
                     /* znany gracz */
+                    std::cout << "ZNANY GRACZ\n";
                     player_info &player = players[name];
                     if (session_id < player.id || players[name].disconnected)
                         continue;

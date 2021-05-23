@@ -2,6 +2,7 @@
 #define SIK2_COMMON_H
 
 #include <cstdint>
+#include <sys/timerfd.h>
 #define NOT_EATEN false
 #define EATEN true
 #define TURN_RIGHT 1
@@ -18,6 +19,15 @@
 
 #define DEFAULT_SERVER_PORT 2021
 
+#define DATAGRAM_MAX_SIZE 30000
+// todo ^^ może inne
+#define CLIENT_TIMEOUT_SECONDS 5
+// todo ^^ na 2
+
+#define TIMER_ROUND 0
+#define TIMER_TIMEOUT 1
+#define TIMER_SEND_UPDATE 2
+#define UPDATE_NANOSECOND_INTERVAL 30000000
 /* syserr i fatal z labów */
 
 /* Wypisuje informację o błędnym zakończeniu funkcji systemowej
@@ -26,6 +36,8 @@ extern void syserr(const char *fmt, ...);
 
 /* Wypisuje informację o błędzie i kończy działanie programu. */
 extern void fatal(const char *fmt, ...);
+
+void create_timer(int &fd, int timer_type, int rounds_per_sec);
 
 struct __attribute__((__packed__)) client_msg {
     uint64_t session_id;
