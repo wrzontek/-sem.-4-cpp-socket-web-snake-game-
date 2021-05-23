@@ -214,13 +214,13 @@ int main(int argc, char *argv[]) {
                 }
 
                 while (ret > 0) {
-                    uint32_t len = be32toh((uint32_t) *(buf));
-                    uint8_t event_type = (uint8_t) *(buf + 8);
+                    uint32_t len = be32toh(*(uint32_t *) (buf));
+                    uint8_t event_type = *(uint8_t *) (buf + 8);
 
                     uint32_t my_crc32 = crc32buf(buf, len + 4);
-                    uint32_t sent_crc32 = htobe32((uint32_t) *(buf + len + 4)); // ???
+                    uint32_t sent_crc32 = htobe32(*(uint32_t *) (buf + 4 + len)); // ???
                     std::cout << "crc32: " << my_crc32 << " " << sent_crc32 << std::endl;
-                    std::cout << "len and type: " << len << " " << event_type << std::endl;
+                    std::cout << "len and type: " << len << " " << (int)event_type << std::endl;
 
                     if (my_crc32 != sent_crc32)
                         break;
