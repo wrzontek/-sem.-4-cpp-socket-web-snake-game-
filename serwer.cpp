@@ -314,16 +314,17 @@ namespace {
     }
 }
 
-void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char *buf,
+void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, std::vector<int8_t> &buf_vector,
                   std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
     static char event_buf[550];
 
     if (expected_event_no < game_events.size()) {
+        std::cout << "SENDING HISTORY!!!\n";
         int total_size = 0;
         int size = 0;
 
         for (int i = expected_event_no; i < game_events.size(); i++) {
-            auto event_variant = game_events[1];
+            auto event_variant = game_events[i];
             if (auto new_game_p = std::get_if<event_new_game>(&event_variant)) {
                 // TODO poprawić pewnie
                 event_new_game new_game = *new_game_p;
@@ -344,17 +345,17 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
             }
 
             if (total_size + size <= DATAGRAM_MAX_SIZE) {
-                memcpy(buf + total_size, (const char *)&buf, size);
+                memcpy(buf_vector.data() + total_size, (const char *)&event_buf, size);
                 total_size += size;
             } else {
-                sendto(client_socket, (char *)&buf, total_size, 0,
+                sendto(client_socket, (char *)buf_vector.data(), total_size, 0,
                        (sockaddr *)(&client_address), sizeof(client_address));
 
-                send_history(i, client_address, buf, game_events);
+                send_history(i, client_address, buf_vector, game_events);
             }
         }
 
-        sendto(client_socket, (char *)&buf, total_size, 0,
+        sendto(client_socket, (char *)buf_vector.data(), total_size, 0,
                (sockaddr *)(&client_address), sizeof(client_address));
     }
 }
@@ -416,9 +417,10 @@ int main(int argc, char *argv[]) {
 
     client_msg in_msg{};
     uint64_t exp;
-    char *buf = (char *)calloc(DATAGRAM_MAX_SIZE, 1);
-    if (buf == NULL)
-        syserr("calloc");
+    std::vector<int8_t >buf(DATAGRAM_MAX_SIZE);
+
+    if (buf.data() == NULL)
+        syserr("vector alloc");
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"

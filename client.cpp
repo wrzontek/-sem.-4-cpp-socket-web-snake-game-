@@ -248,7 +248,7 @@ int main(int argc, char *argv[]) {
     std::cout << buf.size();
 
     if (buf.data() == NULL)
-        syserr("calloc");
+        syserr("vector alloc");
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
@@ -330,7 +330,7 @@ int main(int argc, char *argv[]) {
                         expected_event_no++;
                         check_ready_messages(ready_messages);
                     }
-                    else {
+                    else if (event_no > expected_event_no && ready_messages.find(event_no) == ready_messages.end()) {
                         ready_messages.insert(std::pair(event_no, msg_to_gui));
                     }
 
