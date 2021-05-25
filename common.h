@@ -61,7 +61,7 @@ struct __attribute__((__packed__)) event_new_game {
 
     uint32_t maxx;
     uint32_t maxy;
-    uint8_t list_and_crc[21 * MAX_PLAYERS + 4];
+    uint8_t list_and_crc[MAX_NAME_LEN * MAX_PLAYERS + 4];
 };
 
 struct __attribute__((__packed__)) event_pixel {

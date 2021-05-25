@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <utmpx.h>
 #include <poll.h>
+#include <map>
 #include "common.h"
 
 #define MAX_CONSECUTIVE_SERVER_MSG 10
@@ -149,6 +150,11 @@ std::string my_getline(std::string &buf_str) {
     }
 }
 
+void check_ready_messages(std::map<uint32_t, std::string> &ready_messages) {
+    // patrzymy czy mamy event == expected gotowy, wysyłamy wszystkie takie
+
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2)
         fatal("Arguments: game_server [-n player_name] [-p n] [-i gui_server] [-r n]\n");
@@ -179,7 +185,8 @@ int main(int argc, char *argv[]) {
     uint32_t maxy;
     uint32_t expected_event_no = 0;
     int last_key_down = 0;
-    std::string player_names_str;
+    std::map<uint32_t, std::string> ready_messages;
+    std::string msg_to_gui;
     int player_count;
 
     client_msg msg_to_server = {htobe64(session_id), turn_direction, htobe32(expected_event_no), 0};
@@ -231,8 +238,8 @@ int main(int argc, char *argv[]) {
 
                     std::cout << "crc32(sent, mine):" << sent_crc32 << " " << my_crc32 << std::endl;
 
-                    //if (my_crc32 != sent_crc32)
-                    //    break;
+                    if (my_crc32 != sent_crc32)
+                        break;
 
                     if (event_type == TYPE_NEW_GAME) {
                         if (event_no != 0) {
@@ -240,26 +247,34 @@ int main(int argc, char *argv[]) {
                         }
                         maxx = be32toh(*(uint32_t *) (event_buf + 9));
                         maxy = be32toh(*(uint32_t *) (event_buf + 13));
-                        std::cout << "NEW GAME\n";
-                        std::cout << "X, Y: " << maxx << " " << maxy << std::endl;
+
+                        if (maxx > 9999 || maxy > 9999) { // todo
+                            std::cerr << "board too large\n";
+                            exit(1);
+                        }
+                        msg_to_gui = "NEW_GAME " + std::to_string(maxx) + " " + std::to_string(maxy) + " ";
                         player_count = 0;
-                        player_names_str = "";
                         auto *player_names = event_buf + 17;
                         int i = 0;
                         while (player_names[i] != '\0') {
-                            // spacja to separator
-                            auto c = player_names[i];
-                            if (i > len - 13 || ((c < 33 || c > 126) && c != ' ')) {
-                                //exit(1); // todo
+                            if (i > len - 13) {
+                                std::cerr << "player name list not null terminated\n";
+                                exit(1);
                             }
-                            player_names_str += c;
+                            auto c = player_names[i];
+                            if ((c < 33 || c > 126) && c != ' ') { // spacja to separator
+                                std::cerr << "invalid char in player name list\n";
+                                exit(1);
+                            }
+                            msg_to_gui += c;
                             if (c == ' ')
                                 player_count ++;
                             i++;
                         }
                         player_count++;
-                        std::cout << player_names_str << std::endl;
-                        std::cout << "player count: " << player_count << std::endl;
+                        msg_to_gui += '\n';
+
+
 
                     }
                     else if (event_type == TYPE_PLAYER_ELIMINATED) {
@@ -277,10 +292,15 @@ int main(int argc, char *argv[]) {
                         break;
                     }
 
-                    // jeśli poprawny evencik i event_no = expected to wysyłamy do gui i expected++
-                    // i sprawdzamy czy kolejny event mamy zapisany, jak tak to wysyłamy wszystkie takie
-
-                    // jeśli poprawny evencik ale event_no > expected to zapisujemy se i wyślemy potem
+                    std::cout << msg_to_gui;
+                    if (event_no == expected_event_no) {
+                        write(client[1].fd, msg_to_gui.data(), msg_to_gui.size());
+                        expected_event_no++;
+                        check_ready_messages(ready_messages);
+                    }
+                    else {
+                        ready_messages.insert(std::pair(event_no, msg_to_gui));
+                    }
 
                     event_buf += (8 + len);
                     ret -= (8 + (int)len);

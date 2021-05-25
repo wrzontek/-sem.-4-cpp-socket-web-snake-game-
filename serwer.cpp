@@ -113,12 +113,6 @@ namespace {
         uint8_t event_type = *(uint8_t *) (event + 8);
         std::cout << "len, number, type: " << len << ", " << event_no << ", " << (int)event_type << std::endl;
         uint32_t sent_crc32 = be32toh(*(uint32_t *) (event + len + 4));
-/*        event_common *event_b = (event_common *)event;
-        uint32_t len = be32toh(event_b->len);
-        uint32_t event_no = be32toh(event_b->event_no);
-        uint8_t event_type = event_b->event_type;
-        uint32_t sent_crc32 = be32toh(*(uint32_t *) (event + len + 4));*/
-
         std::cout << "crc32:" << sent_crc32 << std::endl;
 
         for (auto &pair: players) {
@@ -127,9 +121,8 @@ namespace {
                 continue;
 
             std::cout << "Sending to player\n";
-            int dupa = sendto(send_socket, event, size, 0,
+            sendto(send_socket, event, size, 0,
                    (sockaddr *)&client_player.address, sizeof(client_player.address));
-            std::cout << dupa << "<>" << size << std::endl;
         }
         for (auto &pair: observers) {
             auto addr = pair.second;
@@ -174,21 +167,21 @@ namespace {
         }
         player_list[player_list.size() - 1] = '\0';
 
-        event_new_game event_new_game{htobe32(17 + player_list.size()),
+        uint32_t len = 13 + player_list.size();
+        event_new_game event_new_game{htobe32(len),
                                       htobe32(game_events.size()), TYPE_NEW_GAME,
                                       htobe32(board_width), htobe32(board_height), 0};
 
         for (int i = 0; i < player_list.size(); i++)
             event_new_game.list_and_crc[i] = player_list[i];
 
-        uint32_t crc32 = htobe32(crc32buf((char *)&event_new_game, 17 + player_list.size()));
-        std::cout << "NEW GAME CRC32: " << be32toh(crc32) << std::endl;
-        // todo tutaj te wskaźniki kopiowanka dziwne poprawić
-        //memcpy((char *)&event_new_game + 17 + player_list.size(), &crc32, sizeof(uint32_t));
+        uint32_t crc32 = htobe32(crc32buf((char *)&event_new_game, len + 4));
+
+        memcpy((char *)&event_new_game + len + 4, &crc32, sizeof(uint32_t));
 
         game_events.emplace_back(event_new_game);
 
-        send_to_all(players, observers, (char *)&event_new_game, 21 + player_list.size());
+        send_to_all(players, observers, (char *)&event_new_game, len + 8);
     }
 
 
