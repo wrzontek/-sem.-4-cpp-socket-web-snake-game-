@@ -26,7 +26,7 @@
 
 namespace {
     uint64_t my_rand;
-    int port, turning_speed, rounds_per_sec, board_width, board_height, send_socket;
+    int port, turning_speed, rounds_per_sec, board_width, board_height, client_socket;
 
     /* https://stackoverflow.com/questions/31502120/sin-and-cos-give-unexpected-results-for-well-known-angles */
     inline double degree_to_radian(double d) {
@@ -121,13 +121,13 @@ namespace {
                 continue;
 
             std::cout << "Sending to player\n";
-            sendto(send_socket, event, size, 0,
+            sendto(client_socket, event, size, 0,
                    (sockaddr *)&client_player.address, sizeof(client_player.address));
         }
         for (auto &pair: observers) {
             auto addr = pair.second;
             std::cout << "Sending to observer\n";
-            sendto(send_socket, event, size, 0,
+            sendto(client_socket, event, size, 0,
                    (sockaddr *)&(addr), sizeof(addr));
         }
     }
@@ -163,17 +163,26 @@ namespace {
         std::string player_list;
         for (auto &pair : players) {
             std::string name = pair.first;
-            player_list += name + " ";
+            player_list += name + (char)246; // placeholder char na zmiane na \0
         }
-        player_list[player_list.size() - 1] = '\0';
+        uint32_t player_list_size = player_list.size();
 
-        uint32_t len = 13 + player_list.size();
+        //player_list[player_list.size() - 1] = '\0';
+
+        char *player_list_data = player_list.data();
+        for (int i = 0; i < player_list_size; i++) {
+            if (player_list_data[i] == (char)246)
+                player_list_data[i] = '\0';
+        }
+
+        uint32_t len = 13 + player_list_size;
+
         event_new_game event_new_game{htobe32(len),
                                       htobe32(game_events.size()), TYPE_NEW_GAME,
                                       htobe32(board_width), htobe32(board_height), 0};
 
-        for (int i = 0; i < player_list.size(); i++)
-            event_new_game.list_and_crc[i] = player_list[i];
+        for (int i = 0; i < player_list_size; i++)
+            event_new_game.list_and_crc[i] = player_list_data[i];
 
         uint32_t crc32 = htobe32(crc32buf((char *)&event_new_game, len + 4));
 
@@ -327,14 +336,14 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
                 memcpy(buf + total_size, (const char *)&buf, size);
                 total_size += size;
             } else {
-                sendto(send_socket, (char *)&buf, total_size, 0,
+                sendto(client_socket, (char *)&buf, total_size, 0,
                        (sockaddr *)(&client_address), sizeof(client_address));
 
                 send_history(i, client_address, buf, game_events);
             }
         }
 
-        sendto(send_socket, (char *)&buf, total_size, 0,
+        sendto(client_socket, (char *)&buf, total_size, 0,
                (sockaddr *)(&client_address), sizeof(client_address));
     }
 }
@@ -361,33 +370,33 @@ int main(int argc, char *argv[]) {
     bool game_in_progress = false;
 
     /*
-     * client[0] na obsługę komunikatów
-     * client[1] na timer rundy
+     * poll_arr[0] na obsługę komunikatów
+     * poll_arr[1] na timer rundy
      * pozostałe na timery graczy (do zrywania połączeń przy braku komunikacji przez 2s)
     */
 
-    pollfd client[CLIENT_MAX];
+    pollfd poll_arr[CLIENT_MAX];
     sockaddr_in6 serveraddr{};
     sockaddr_in6 client_address{};
 
     for (int i = 0; i < CLIENT_MAX; i++) {
-        client[i].fd = -1;
-        client[i].events = POLLIN;
-        client[i].revents = 0;
+        poll_arr[i].fd = -1;
+        poll_arr[i].events = POLLIN;
+        poll_arr[i].revents = 0;
     }
 
-    create_timer(client[1].fd, TIMER_ROUND, rounds_per_sec);
+    create_timer(poll_arr[1].fd, TIMER_ROUND, rounds_per_sec);
 
-    send_socket = client[0].fd = socket(PF_INET6, SOCK_DGRAM, 0);
-    if (client[0].fd == -1)
+    client_socket = poll_arr[0].fd = socket(PF_INET6, SOCK_DGRAM, 0);
+    if (poll_arr[0].fd == -1)
         syserr("socket");
 
     int on = 1;
-    if (setsockopt(client[0].fd, SOL_SOCKET, SO_REUSEADDR,
+    if (setsockopt(poll_arr[0].fd, SOL_SOCKET, SO_REUSEADDR,
                    (char *) &on, sizeof(on)) < 0)
         syserr("setsockopt");
 
-    if (fcntl(client[0].fd, F_SETFL, fcntl(client[0].fd, F_GETFL, 0) | O_NONBLOCK) == -1)
+    if (fcntl(poll_arr[0].fd, F_SETFL, fcntl(poll_arr[0].fd, F_GETFL, 0) | O_NONBLOCK) == -1)
         syserr("fcntl");
 
     memset(&serveraddr, 0, sizeof(serveraddr));
@@ -395,7 +404,7 @@ int main(int argc, char *argv[]) {
     serveraddr.sin6_port = htons(port);
     serveraddr.sin6_addr = in6addr_any;
 
-    if (bind(client[0].fd, (struct sockaddr *) &serveraddr,
+    if (bind(poll_arr[0].fd, (struct sockaddr *) &serveraddr,
              (socklen_t) sizeof(serveraddr)) == -1)
         syserr("bind serveraddr");
 
@@ -409,14 +418,14 @@ int main(int argc, char *argv[]) {
 #pragma ide diagnostic ignored "EndlessLoop"
     while (true) { // pracujemy aż coś się mocno nie zepsuje
         for (int i = 1; i < CLIENT_MAX; i++)
-            client[i].revents = 0;
+            poll_arr[i].revents = 0;
 
-        int ret = poll(client, CLIENT_MAX, -1);
+        int ret = poll(poll_arr, CLIENT_MAX, -1);
 
         if (ret <= 0) // zawsze będzie budzić poll co najmniej timer tury
             syserr("poll or timer");
 
-        if (client[0].revents & POLLIN) {
+        if (poll_arr[0].revents & POLLIN) {
             /* Komunikat od klienta */
             std::cout << "Komunikat od klienta\n";
             // przetwarzamy część/wszystkie datagramy co doszły
@@ -429,12 +438,12 @@ int main(int argc, char *argv[]) {
              * masą połączęń i odłączeń obserwatorów którym trzeba wysłać sporą historię */
             for (int t = 0; t < MAX_CONSECUTIVE_CLIENT_MSG; t++) {
                 socklen_t rcva_len = (socklen_t) sizeof(client_address);
-                ret = recvfrom(client[0].fd, ((char *) &in_msg), sizeof(client_msg), 0,
+                ret = recvfrom(poll_arr[0].fd, ((char *) &in_msg), sizeof(client_msg), 0,
                                (struct sockaddr *) &client_address, &rcva_len);
 
                 if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                     // brak komunikatów do odebrania więc zerujemy revents
-                    client[0].revents = 0;
+                    poll_arr[0].revents = 0;
                     break;
                 }
                 if (ret == -1)
@@ -473,8 +482,8 @@ int main(int argc, char *argv[]) {
                         send_history(next_event, client_address, buf, game_events);
 
                         for (int i = 2; i < CLIENT_MAX; i++) {
-                            if (client[i].fd == -1) {
-                                create_timer(client[i].fd, TIMER_TIMEOUT, -1);
+                            if (poll_arr[i].fd == -1) {
+                                create_timer(poll_arr[i].fd, TIMER_TIMEOUT, -1);
                                 client_poll_position.insert(std::pair(session_id, i));
                                 break;
                             }
@@ -484,7 +493,7 @@ int main(int argc, char *argv[]) {
                         send_history(next_event, client_address, buf, game_events);
 
                         int poll_position = client_poll_position[session_id];
-                        update_timer(client[poll_position]);
+                        update_timer(poll_arr[poll_position]);
                     }
                     continue;
                 }
@@ -509,8 +518,8 @@ int main(int argc, char *argv[]) {
                     send_history(next_event, client_address, buf, game_events);
 
                     for (int i = 2; i < CLIENT_MAX; i++) {
-                        if (client[i].fd == -1) {
-                            create_timer(client[i].fd, TIMER_TIMEOUT, -1);
+                        if (poll_arr[i].fd == -1) {
+                            create_timer(poll_arr[i].fd, TIMER_TIMEOUT, -1);
                             client_poll_position.insert(std::pair(session_id, i));
                             break;
                         }
@@ -539,7 +548,7 @@ int main(int argc, char *argv[]) {
                         ready_players++;
                     }
                     int poll_position = client_poll_position[session_id];
-                    update_timer(client[poll_position]);
+                    update_timer(poll_arr[poll_position]);
 
                     send_history(next_event, client_address, buf, game_events);
                 }
@@ -548,10 +557,10 @@ int main(int argc, char *argv[]) {
 
         // iteracja po timerach graczy
         for (int i = 2; i < CLIENT_MAX; i++) {
-            if (client[i].revents & POLLIN) {
-                ret = read(client[i].fd, &exp, sizeof(uint64_t));
-                std::cout << "disconnecting client\n";
-                client[i].fd = -1;
+            if (poll_arr[i].revents & POLLIN) {
+                ret = read(poll_arr[i].fd, &exp, sizeof(uint64_t));
+                std::cout << "disconnecting poll_arr\n";
+                poll_arr[i].fd = -1;
                 uint64_t client_session_id;
                 for (std::pair pair : client_poll_position) {
                     if (pair.second == i) {
@@ -576,10 +585,10 @@ int main(int argc, char *argv[]) {
         }
 
 
-        if (client[1].revents & POLLIN) {
+        if (poll_arr[1].revents & POLLIN) {
             /* Czas przeliczyć turę bądź sprawdzić czy zaczynamy grę */
             std::cout << "TURA\n";
-            read(client[1].fd, &exp, sizeof(uint64_t));
+            read(poll_arr[1].fd, &exp, sizeof(uint64_t));
             if (game_in_progress) {
                 do_turn(game_id, players, observers, board, game_events, game_in_progress);
             } else if (ready_players >= 2 && ready_players == player_ids.size()) {
@@ -604,7 +613,7 @@ int main(int argc, char *argv[]) {
                     player.ready = false;
                     player.in_game = false;
                     if (player.disconnected) {
-                        client[client_poll_position[player.id]].fd = -1;
+                        poll_arr[client_poll_position[player.id]].fd = -1;
                         client_poll_position.erase(player.id);
                         players.erase(player_ids[player.id]);
                         player_ids.erase(player.id);

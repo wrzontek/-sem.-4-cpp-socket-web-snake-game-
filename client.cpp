@@ -169,8 +169,8 @@ int main(int argc, char *argv[]) {
 
     net_init();
 
-    pollfd client[3];   // 0 - serwer, 1 - gui, 2 - timer
-    init_poll(client);
+    pollfd poll_arr[3];   // 0 - serwer, 1 - gui, 2 - timer
+    init_poll(poll_arr);
 
     uint8_t turn_direction = 0;
     // set czy tam mapa graczy
@@ -197,21 +197,21 @@ int main(int argc, char *argv[]) {
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
     while (true) {
-        int ret = poll(client, 3, -1);
+        int ret = poll(poll_arr, 3, -1);
 
         if (ret <= 0)   // timer powinien nas budzić co UPDATE_NANOSECOND_INTERVAL
             syserr("poll or timer");
 
-        if (client[0].revents & POLLIN) {
+        if (poll_arr[0].revents & POLLIN) {
             for (int t = 0; t < MAX_CONSECUTIVE_SERVER_MSG; t++) {
                 // limit żeby gra była responsive na input gracza
                 std::cout << "WIADOMOŚĆ OD SERWERA\n";
-                ret = read(client[0].fd, buf.data(), buf.size());
+                ret = read(poll_arr[0].fd, buf.data(), buf.size());
 
                 if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                     std::cout << "BRAK" << std::endl;
                     // brak komunikatów do odebrania więc zerujemy revents
-                    client[0].revents = 0;
+                    poll_arr[0].revents = 0;
                     break;
                 }
 
@@ -238,14 +238,18 @@ int main(int argc, char *argv[]) {
                             exit(1); // todo
                         }
                         expected_event_no = 1;
-                        maxx = be32toh(*(uint32_t *) (event_buf + 9));
-                        maxy = be32toh(*(uint32_t *) (event_buf + 13));
+                        uint32_t sent_maxx = *(uint32_t *) (event_buf + 9);
+                        uint32_t sent_maxy = *(uint32_t *) (event_buf + 13);
+
+                        maxx = be32toh(sent_maxx);
+                        maxy = be32toh(sent_maxy);
 
                         if (maxx > 9999 || maxy > 9999) { // todo
                             std::cerr << "board too large\n";
                             exit(1);
                         }
-                        msg_to_gui = "NEW_GAME " + std::to_string(maxx) + " " + std::to_string(maxy) + " ";
+                        msg_to_gui = "NEW_GAME " + std::to_string(sent_maxx) + " " + std::to_string(sent_maxy) + " ";
+
                         player_count = 0;
                         auto *player_names = event_buf + 17;
                         int i = 0;
@@ -257,19 +261,26 @@ int main(int argc, char *argv[]) {
                                 exit(1);
                             }
                             auto c = player_names[i];
-                            if ((c < 33 || c > 126) && (c != ' ' && c != '\0')) { // spacja to separator
+                            if ((c < 33 || c > 126) && c != '\0') {
+                                std::cout << (int)c << std::endl;
                                 std::cerr << "invalid char in player name list\n";
                                 exit(1);
                             }
-                            msg_to_gui += c;
-                            new_player_name += c;
-                            if (c == ' ' || c == '\0') {
+
+
+                            if (c == '\0') {
                                 player_map.insert(std::pair(new_player_number, new_player_name));
                                 new_player_name = "";
                                 new_player_number++;
                                 player_count++;
-                                if (c == '\0')
+
+                                if (player_count == 2)
                                     break;
+
+                                msg_to_gui += " ";
+                            } else {
+                                msg_to_gui += c;
+                                new_player_name += c;
                             }
 
                             i++;
@@ -290,9 +301,17 @@ int main(int argc, char *argv[]) {
                             std::cerr << "player number too big\n";
                             exit(1);
                         }
-                        uint32_t x = be32toh(*(uint32_t *) (event_buf + 10));
-                        uint32_t y = be32toh(*(uint32_t *) (event_buf + 14));
-                        msg_to_gui = "PIXEL " + std::to_string(x) + " " + std::to_string(y) + " " + player_map[player_number] + "\n";
+                        uint32_t sent_x = be32toh(*(uint32_t *) (event_buf + 10));
+                        uint32_t sent_y = be32toh(*(uint32_t *) (event_buf + 14));
+
+                        uint32_t x = be32toh(sent_x);
+                        uint32_t y = be32toh(sent_y);
+                        if (x > maxx || y > maxy) {
+                            std::cerr << "pixel outside board\n";
+                            exit(1);
+                        }
+
+                        msg_to_gui = "PIXEL " + std::to_string(sent_x) + " " + std::to_string(sent_y) + " " + player_map[player_number] + "\n";
                     }
                     else {
                         std::cout << "UNKNOWN, ignoring\n";
@@ -302,7 +321,7 @@ int main(int argc, char *argv[]) {
                     std::cout << msg_to_gui;
                     if (event_no == expected_event_no) {
                         std::cout << "EVENT == EXPECTED, SENDING\n";
-                        write(client[1].fd, msg_to_gui.data(), msg_to_gui.size());
+                        write(poll_arr[1].fd, msg_to_gui.data(), msg_to_gui.size());
                         expected_event_no++;
                         check_ready_messages(ready_messages);
                     }
@@ -316,16 +335,16 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if (client[1].revents & POLLIN) {
+        if (poll_arr[1].revents & POLLIN) {
             std::cout << "WIADOMOŚĆ OD GUI\n";
             for (int t = 0; t < MAX_CONSECUTIVE_GUI_MSG; t++) {
                 // limit żeby gui nas nie sparaliżowało
-                ret = read(client[1].fd, command_buf, sizeof(command_buf) - 1);
+                ret = read(poll_arr[1].fd, command_buf, sizeof(command_buf) - 1);
 
                 if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                     std::cout << "BRAK" << std::endl;
                     // brak komunikatów do odebrania więc zerujemy revents
-                    client[1].revents = 0;
+                    poll_arr[1].revents = 0;
                     break;
                 }
 
@@ -357,11 +376,11 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if (client[2].revents & POLLIN) {
-            client[2].revents = 0;
+        if (poll_arr[2].revents & POLLIN) {
+            poll_arr[2].revents = 0;
             //std::cout << "timer up, sending to server\n";
             uint64_t exp;
-            ret = read(client[2].fd, &exp, sizeof(uint64_t));
+            ret = read(poll_arr[2].fd, &exp, sizeof(uint64_t));
             if (ret != sizeof(uint64_t))
                 syserr("timer");
 
