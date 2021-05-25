@@ -28,6 +28,7 @@
 #define TIMER_TIMEOUT 1
 #define TIMER_SEND_UPDATE 2
 #define UPDATE_NANOSECOND_INTERVAL 30000000
+
 /* syserr i fatal z labów */
 
 /* Wypisuje informację o błędnym zakończeniu funkcji systemowej

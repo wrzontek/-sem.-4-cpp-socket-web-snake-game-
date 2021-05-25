@@ -72,87 +72,87 @@ namespace {
         addr_hints.ai_canonname = NULL;
         addr_hints.ai_next = NULL;
     }
-}
-
-void net_init() {
-    addrinfo addr_hints_server{}, addr_hints_gui{};
-    addrinfo *addr_server_result, *addr_gui_result;
-
-    init_hints(addr_hints_server, IPPROTO_UDP, SOCK_DGRAM);
-
-    if (getaddrinfo(server, server_port, &addr_hints_server, &addr_server_result) != 0)
-        syserr("getaddrinfo server");
-
-    server_sock = socket(addr_server_result->ai_family,
-                         addr_server_result->ai_socktype,
-                         addr_server_result->ai_protocol);
-    if (server_sock < 0)
-        syserr("socket server");
-
-    if (connect(server_sock, addr_server_result->ai_addr, addr_server_result->ai_addrlen))
-        syserr("connect server");
-
-    freeaddrinfo(addr_server_result);
-
-    if (fcntl(server_sock, F_SETFL, fcntl(server_sock, F_GETFL, 0) | O_NONBLOCK) == -1)
-        syserr("fcntl server");
 
 
-    init_hints(addr_hints_gui, IPPROTO_TCP, SOCK_STREAM);
+    void net_init() {
+        addrinfo addr_hints_server{}, addr_hints_gui{};
+        addrinfo *addr_server_result, *addr_gui_result;
 
-    if (getaddrinfo(gui_addr_arg, gui_port, &addr_hints_gui, &addr_gui_result) != 0)
-        syserr("getaddrinfo gui");
+        init_hints(addr_hints_server, IPPROTO_UDP, SOCK_DGRAM);
 
-    gui_sock = socket(addr_gui_result->ai_family,
-                      addr_gui_result->ai_socktype,
-                      addr_gui_result->ai_protocol);
-    if (gui_sock < 0)
-        syserr("socket gui");
+        if (getaddrinfo(server, server_port, &addr_hints_server, &addr_server_result) != 0)
+            syserr("getaddrinfo server");
 
-    if (connect(gui_sock, addr_gui_result->ai_addr, addr_gui_result->ai_addrlen))
-        syserr("connect gui");
+        server_sock = socket(addr_server_result->ai_family,
+                             addr_server_result->ai_socktype,
+                             addr_server_result->ai_protocol);
+        if (server_sock < 0)
+            syserr("socket server");
 
-    freeaddrinfo(addr_gui_result);
+        if (connect(server_sock, addr_server_result->ai_addr, addr_server_result->ai_addrlen))
+            syserr("connect server");
 
-    int on = 1;
-    setsockopt(gui_sock,IPPROTO_TCP, TCP_NODELAY,
-               (char *)&on, sizeof(int));
+        freeaddrinfo(addr_server_result);
 
-    if (fcntl(gui_sock, F_SETFL, fcntl(gui_sock, F_GETFL, 0) | O_NONBLOCK) == -1)
-        syserr("fcntl gui");
-}
+        if (fcntl(server_sock, F_SETFL, fcntl(server_sock, F_GETFL, 0) | O_NONBLOCK) == -1)
+            syserr("fcntl server");
 
-void init_poll(pollfd client[]) {
-    for (int i = 0; i <= 2; i++) {
-        client[i].events = POLLIN;
-        client[i].revents = 0;
+
+        init_hints(addr_hints_gui, IPPROTO_TCP, SOCK_STREAM);
+
+        if (getaddrinfo(gui_addr_arg, gui_port, &addr_hints_gui, &addr_gui_result) != 0)
+            syserr("getaddrinfo gui");
+
+        gui_sock = socket(addr_gui_result->ai_family,
+                          addr_gui_result->ai_socktype,
+                          addr_gui_result->ai_protocol);
+        if (gui_sock < 0)
+            syserr("socket gui");
+
+        if (connect(gui_sock, addr_gui_result->ai_addr, addr_gui_result->ai_addrlen))
+            syserr("connect gui");
+
+        freeaddrinfo(addr_gui_result);
+
+        int on = 1;
+        setsockopt(gui_sock, IPPROTO_TCP, TCP_NODELAY,
+                   (char *) &on, sizeof(int));
+
+        if (fcntl(gui_sock, F_SETFL, fcntl(gui_sock, F_GETFL, 0) | O_NONBLOCK) == -1)
+            syserr("fcntl gui");
     }
 
-    client[0].fd = server_sock;
-    client[1].fd = gui_sock;
+    void init_poll(pollfd client[]) {
+        for (int i = 0; i <= 2; i++) {
+            client[i].events = POLLIN;
+            client[i].revents = 0;
+        }
 
-    create_timer(client[2].fd, TIMER_SEND_UPDATE, -1);
-}
+        client[0].fd = server_sock;
+        client[1].fd = gui_sock;
 
-std::string my_getline(std::string &buf_str) {
-    if (buf_str.empty())
-        return buf_str;
-
-    std::size_t pos = buf_str.find('\n');
-    if (pos == std::string::npos) {
-        // nie znaleziono \n
-        return "";
+        create_timer(client[2].fd, TIMER_SEND_UPDATE, -1);
     }
-    else {
-        std::string line = buf_str.substr(0, pos);
-        buf_str.erase(0, pos + 1);
-        return line;
+
+    std::string my_getline(std::string &buf_str) {
+        if (buf_str.empty())
+            return buf_str;
+
+        std::size_t pos = buf_str.find('\n');
+        if (pos == std::string::npos) {
+            // nie znaleziono \n
+            return "";
+        } else {
+            std::string line = buf_str.substr(0, pos);
+            buf_str.erase(0, pos + 1);
+            return line;
+        }
     }
-}
 
-void check_ready_messages(std::map<uint32_t, std::string> &ready_messages) {
-    // patrzymy czy mamy event == expected gotowy, wysyłamy wszystkie takie
-
+    void check_ready_messages(std::map<uint32_t, std::string> &ready_messages) {
+        // patrzymy czy mamy event == expected gotowy, wysyłamy wszystkie takie
+        // TODO
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -169,25 +169,17 @@ int main(int argc, char *argv[]) {
 
     net_init();
 
-/*    rcv_len = read(gui_sock, command_buf, sizeof(command_buf) - 1);
-    if (rcv_len < 0) {
-        syserr("read");
-    }
-
-    printf("read from socket: %zd bytes: %s\n", rcv_len, command_buf);*/
-
     pollfd client[3];   // 0 - serwer, 1 - gui, 2 - timer
     init_poll(client);
 
     uint8_t turn_direction = 0;
     // set czy tam mapa graczy
-    uint32_t maxx;
-    uint32_t maxy;
+    uint32_t maxx, maxy, player_count;
     uint32_t expected_event_no = 0;
     int last_key_down = 0;
     std::map<uint32_t, std::string> ready_messages;
+    std::map<uint8_t, std::string> player_map;
     std::string msg_to_gui;
-    int player_count;
 
     client_msg msg_to_server = {htobe64(session_id), turn_direction, htobe32(expected_event_no), 0};
     for (int i = 0; i < player_name.size(); i++)
@@ -198,8 +190,7 @@ int main(int argc, char *argv[]) {
     char command_buf[20];    // na "LEFT_KEY_DOWN\n" itp
     std::vector<int8_t >buf(DATAGRAM_MAX_SIZE);
     std::cout << buf.size();
-    //char *buf = (char *)std::calloc(DATAGRAM_MAX_SIZE, sizeof(int8_t));
-    //char buf[500];
+
     if (buf.data() == NULL)
         syserr("calloc");
 
@@ -242,9 +233,11 @@ int main(int argc, char *argv[]) {
                         break;
 
                     if (event_type == TYPE_NEW_GAME) {
+                        std::cout << "NEW GAME\n";
                         if (event_no != 0) {
                             exit(1); // todo
                         }
+                        expected_event_no = 1;
                         maxx = be32toh(*(uint32_t *) (event_buf + 9));
                         maxy = be32toh(*(uint32_t *) (event_buf + 13));
 
@@ -256,36 +249,50 @@ int main(int argc, char *argv[]) {
                         player_count = 0;
                         auto *player_names = event_buf + 17;
                         int i = 0;
-                        while (player_names[i] != '\0') {
-                            if (i > len - 13) {
+                        int new_player_number = 0;
+                        std::string new_player_name;
+                        while (true) {
+                            if (i > len - 13) { // todo może 14
                                 std::cerr << "player name list not null terminated\n";
                                 exit(1);
                             }
                             auto c = player_names[i];
-                            if ((c < 33 || c > 126) && c != ' ') { // spacja to separator
+                            if ((c < 33 || c > 126) && (c != ' ' && c != '\0')) { // spacja to separator
                                 std::cerr << "invalid char in player name list\n";
                                 exit(1);
                             }
                             msg_to_gui += c;
-                            if (c == ' ')
-                                player_count ++;
+                            new_player_name += c;
+                            if (c == ' ' || c == '\0') {
+                                player_map.insert(std::pair(new_player_number, new_player_name));
+                                new_player_name = "";
+                                new_player_number++;
+                                player_count++;
+                                if (c == '\0')
+                                    break;
+                            }
+
                             i++;
                         }
-                        player_count++;
                         msg_to_gui += '\n';
-
-
-
                     }
                     else if (event_type == TYPE_PLAYER_ELIMINATED) {
                             std::cout << "PLAYER ELIMINATED\n";
                     }
                     else if (event_type == TYPE_GAME_OVER) {
                         expected_event_no = 0;
-                        std::cout << "NEW GAME\n";
+                        std::cout << "GAME OVER\n";
                     }
                     else if (event_type == TYPE_PIXEL) {
                         std::cout << "PIXEL\n";
+                        uint8_t player_number = *(uint8_t *) (event_buf + 9);
+                        if (player_number >= player_count) {
+                            std::cerr << "player number too big\n";
+                            exit(1);
+                        }
+                        uint32_t x = be32toh(*(uint32_t *) (event_buf + 10));
+                        uint32_t y = be32toh(*(uint32_t *) (event_buf + 14));
+                        msg_to_gui = "PIXEL " + std::to_string(x) + " " + std::to_string(y) + " " + player_map[player_number] + "\n";
                     }
                     else {
                         std::cout << "UNKNOWN, ignoring\n";
@@ -294,6 +301,7 @@ int main(int argc, char *argv[]) {
 
                     std::cout << msg_to_gui;
                     if (event_no == expected_event_no) {
+                        std::cout << "EVENT == EXPECTED, SENDING\n";
                         write(client[1].fd, msg_to_gui.data(), msg_to_gui.size());
                         expected_event_no++;
                         check_ready_messages(ready_messages);

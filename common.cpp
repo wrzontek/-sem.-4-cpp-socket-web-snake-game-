@@ -65,6 +65,17 @@ void syserr(const char *fmt, ...)
     exit(EXIT_FAILURE);
 }
 
+uint32_t crc32buf(const void *buf, size_t size) {
+    const uint8_t *p = static_cast<const uint8_t *>(buf);
+    uint32_t crc;
+
+    crc = ~0U;
+    while (size--)
+        crc = crc32_tab[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
+    return crc ^ ~0U;
+}
+
+
 void fatal(const char *fmt, ...)
 {
     va_list fmt_args;
@@ -108,15 +119,4 @@ void create_timer(int &fd, int timer_type, int rounds_per_sec) {
 
     if (timerfd_settime(fd, TFD_TIMER_ABSTIME, &new_value, NULL) == -1)
         syserr("timerfd_settime create");
-}
-
-
-uint32_t crc32buf(const void *buf, size_t size) {
-    const uint8_t *p = static_cast<const uint8_t *>(buf);
-    uint32_t crc;
-
-    crc = ~0U;
-    while (size--)
-        crc = crc32_tab[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
-    return crc ^ ~0U;
 }
