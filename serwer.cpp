@@ -329,7 +329,7 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, std::
                 // TODO poprawić pewnie
                 event_new_game new_game = *new_game_p;
                 memcpy(event_buf, (const char *)&new_game, new_game.len + 8);
-                size = new_game.len + 8;
+                size = (int)new_game.len + 8;
             } else if (auto pixel_p = std::get_if<event_pixel>(&event_variant)) {
                 event_pixel pixel = *pixel_p;
                 memcpy(event_buf, (const char *)&pixel, sizeof(pixel));
@@ -344,6 +344,8 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, std::
                 size = sizeof(game_over);
             }
 
+
+
             if (total_size + size <= DATAGRAM_MAX_SIZE) {
                 memcpy(buf_vector.data() + total_size, (const char *)&event_buf, size);
                 total_size += size;
@@ -354,6 +356,13 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, std::
                 send_history(i, client_address, buf_vector, game_events);
             }
         }
+
+        uint32_t len = be32toh(*(uint32_t *) buf_vector.data());
+        uint32_t event_no = be32toh(*(uint32_t *) (buf_vector.data() + 4));
+        uint8_t event_type = *(uint8_t *) (buf_vector.data() + 8);
+        std::cout << "len, number, type: " << len << ", " << event_no << ", " << (int)event_type << std::endl;
+        uint32_t sent_crc32 = be32toh(*(uint32_t *) (buf_vector.data() + len + 4));
+        std::cout << "crc32:" << sent_crc32 << std::endl;
 
         sendto(client_socket, (char *)buf_vector.data(), total_size, 0,
                (sockaddr *)(&client_address), sizeof(client_address));

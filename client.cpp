@@ -284,8 +284,8 @@ int main(int argc, char *argv[]) {
 
                     std::cout << "crc32(sent, mine):" << sent_crc32 << " " << my_crc32 << std::endl;
 
-                    if (my_crc32 != sent_crc32)
-                        break;
+                    //if (my_crc32 != sent_crc32)
+                    //    break;
 
                     if (event_type == TYPE_NEW_GAME) {
                         std::cout << "NEW GAME\n";
