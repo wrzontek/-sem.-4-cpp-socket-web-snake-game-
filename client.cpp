@@ -15,6 +15,7 @@
 
 #define MAX_CONSECUTIVE_SERVER_MSG 10
 #define MAX_CONSECUTIVE_GUI_MSG 50
+#define COMMAND_BUF_SIZE 100
 
 namespace {
     uint64_t session_id;
@@ -47,12 +48,16 @@ namespace {
                     break;
                 case 'p':
                     server_port = optarg;
+                    if (atoi(server_port) < 2 || atoi(server_port) > 65535)
+                        fatal("invalid server port argument");
                     break;
                 case 'i':
                     gui_addr_arg = optarg;
                     break;
                 case 'r':
                     gui_port = optarg;
+                    if (atoi(gui_port) < 2 || atoi(gui_port) > 65535)
+                        fatal("invalid gui port argument");
                     break;
                 default:
                     fatal("Arguments: game_server [-n player_name] [-p n] [-i gui_server] [-r n]\n");
@@ -80,7 +85,6 @@ namespace {
         addr_hints.ai_canonname = NULL;
         addr_hints.ai_next = NULL;
     }
-
 
     void net_init() {
         addrinfo addr_hints_server{}, addr_hints_gui{};
@@ -142,14 +146,20 @@ namespace {
         create_timer(client[2].fd, TIMER_SEND_UPDATE, -1);
     }
 
-    std::string my_getline(std::string &buf_str) {
+    std::string my_getline(std::string &buf_str, char *command_buf) {
         if (buf_str.empty())
             return buf_str;
 
         std::size_t pos = buf_str.find('\n');
         if (pos == std::string::npos) {
-            // nie znaleziono \n
-            return "";
+            // nie znaleziono \n, spróbujmy doczytać
+            memset(command_buf, 0, COMMAND_BUF_SIZE);
+            ssize_t len = read(gui_sock, command_buf, COMMAND_BUF_SIZE);
+            if (len <= 0)
+                return "";
+
+            buf_str += std::string(command_buf, len);    // dodajemy do bufora nowo wczytaną porcję
+            return my_getline(buf_str, command_buf);
         } else {
             std::string line = buf_str.substr(0, pos);
             buf_str.erase(0, pos + 1);
@@ -157,12 +167,19 @@ namespace {
         }
     }
 
-    void check_ready_messages(std::map<uint32_t, std::string> &ready_messages) {
-        // patrzymy czy mamy event == expected gotowy, wysyłamy wszystkie takie
-        // TODO
+    void send_ready_messages(int socket, std::map<uint32_t, std::string> &ready_messages) {
+        while (ready_messages.find(expected_event_no) != ready_messages.end()) {
+            auto pair = ready_messages.find(expected_event_no);
+            std::string msg_to_gui = pair->second;
+
+            write(socket, msg_to_gui.data(), msg_to_gui.size());
+
+            expected_event_no++;
+            ready_messages.erase(pair);
+        }
     }
 
-    void handle_new_game(uint32_t len, uint32_t event_no, char *event_buf,
+    void handle_new_game(uint32_t len, uint32_t event_no, const char *event_buf,
                          std::string &msg_to_gui, std::map<uint8_t, std::string> &player_map) {
         if (event_no != 0) {
             exit(1); // todo
@@ -194,7 +211,6 @@ namespace {
                 exit(1);
             }
 
-
             if (c == '\0') {
                 player_map.insert(std::pair(new_player_number, new_player_name));
                 new_player_name = "";
@@ -213,6 +229,25 @@ namespace {
             i++;
         }
         msg_to_gui += '\n';
+    }
+
+    void handle_pixel(const char *event_buf, std::string &msg_to_gui,
+                      std::map<uint8_t, std::string> &player_map) {
+        uint8_t player_number = *(uint8_t *) (event_buf + 9);
+        if (player_number >= player_count) {
+            std::cerr << "player number too big\n";
+            exit(1);
+        }
+
+        uint32_t x = be32toh(*(uint32_t *) (event_buf + 10));
+        uint32_t y = be32toh(*(uint32_t *) (event_buf + 14));
+
+        if (x > maxx || y > maxy) {
+            std::cerr << "pixel outside board\n";
+            exit(1);
+        }
+
+        msg_to_gui = "PIXEL " + std::to_string(x) + " " + std::to_string(y) + " " + player_map[player_number] + "\n";
     }
 }
 
@@ -243,7 +278,7 @@ int main(int argc, char *argv[]) {
 
     write(server_sock, (char *)&msg_to_server, 13 + player_name.size());
 
-    char command_buf[20];    // na "LEFT_KEY_DOWN\n" itp
+    char command_buf[COMMAND_BUF_SIZE];    // na "LEFT_KEY_DOWN\n" itp
     std::vector<int8_t >buf(DATAGRAM_MAX_SIZE);
     std::cout << buf.size();
 
@@ -284,39 +319,29 @@ int main(int argc, char *argv[]) {
 
                     std::cout << "crc32(sent, mine):" << sent_crc32 << " " << my_crc32 << std::endl;
 
-                    //if (my_crc32 != sent_crc32)
-                    //    break;
+                    if (my_crc32 != sent_crc32)
+                        break;
 
                     if (event_type == TYPE_NEW_GAME) {
                         std::cout << "NEW GAME\n";
                         handle_new_game(len, event_no, event_buf, msg_to_gui, player_map);
                     }
                     else if (event_type == TYPE_PLAYER_ELIMINATED) {
-                            std::cout << "PLAYER ELIMINATED\n";
-                            // TODO
-                    }
-                    else if (event_type == TYPE_GAME_OVER) {
-                        std::cout << "GAME OVER\n";
-                        expected_event_no = 0;
-                        // TODO
-                    }
-                    else if (event_type == TYPE_PIXEL) {
-                        std::cout << "PIXEL\n";
+                        std::cout << "PLAYER ELIMINATED\n";
                         uint8_t player_number = *(uint8_t *) (event_buf + 9);
                         if (player_number >= player_count) {
                             std::cerr << "player number too big\n";
                             exit(1);
                         }
-
-                        uint32_t x = be32toh(*(uint32_t *) (event_buf + 10));
-                        uint32_t y = be32toh(*(uint32_t *) (event_buf + 14));
-
-                        if (x > maxx || y > maxy) {
-                            std::cerr << "pixel outside board\n";
-                            exit(1);
-                        }
-
-                        msg_to_gui = "PIXEL " + std::to_string(x) + " " + std::to_string(y) + " " + player_map[player_number] + "\n";
+                        msg_to_gui = "PLAYER_ELIMINATED " + player_map[player_number] + "\n";
+                    }
+                    else if (event_type == TYPE_GAME_OVER) {
+                        std::cout << "GAME OVER\n";
+                        expected_event_no = 0;
+                    }
+                    else if (event_type == TYPE_PIXEL) {
+                        std::cout << "PIXEL\n";
+                        handle_pixel(event_buf, msg_to_gui, player_map);
                     }
                     else {
                         std::cout << "UNKNOWN, ignoring\n";
@@ -328,7 +353,7 @@ int main(int argc, char *argv[]) {
                         std::cout << "EVENT == EXPECTED, SENDING\n";
                         write(poll_arr[1].fd, msg_to_gui.data(), msg_to_gui.size());
                         expected_event_no++;
-                        check_ready_messages(ready_messages);
+                        send_ready_messages(poll_arr[1].fd, ready_messages);
                     }
                     else if (event_no > expected_event_no && ready_messages.find(event_no) == ready_messages.end()) {
                         ready_messages.insert(std::pair(event_no, msg_to_gui));
@@ -353,11 +378,10 @@ int main(int argc, char *argv[]) {
                     break;
                 }
 
-
                 std::string command_buf_str(command_buf, ret);
 
                 while (ret > 0) {
-                    std::string command = my_getline(command_buf_str);
+                    std::string command = my_getline(command_buf_str, command_buf);
 
                     std::cout << ret << " " << command << std::endl;
 
@@ -367,11 +391,13 @@ int main(int argc, char *argv[]) {
                     if (command == "LEFT_KEY_DOWN") {
                         turn_direction = TURN_LEFT;
                         last_key_down = TURN_LEFT;
-                    } else if (command == "RIGHT_KEY_DOWN") {
+                    }
+                    else if (command == "RIGHT_KEY_DOWN") {
                         turn_direction = TURN_RIGHT;
                         last_key_down = TURN_RIGHT;
-                    } else if ((command == "LEFT_KEY_UP" && last_key_down == TURN_LEFT) ||
-                               (command == "RIGHT_KEY_UP" && last_key_down == TURN_RIGHT)) {
+                    }
+                    else if ((command == "LEFT_KEY_UP" && last_key_down == TURN_LEFT) ||
+                            (command == "RIGHT_KEY_UP" && last_key_down == TURN_RIGHT)) {
                         turn_direction = 0;
                         last_key_down = 0;
                     }
@@ -397,6 +423,5 @@ int main(int argc, char *argv[]) {
         }
     }
 #pragma clang diagnostic pop
-
     return 0;
 };
