@@ -133,14 +133,6 @@
 			<Option target="client"/>
 			<Option target="serwer"/>
 		</Unit>
-		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.cpp">
-			<Option target="client"/>
-			<Option target="serwer"/>
-		</Unit>
-		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/crc.h">
-			<Option target="client"/>
-			<Option target="serwer"/>
-		</Unit>
 		<Unit filename="/cygdrive/c/Users/Adrian/CLionProjects/SiK2/serwer.cpp">
 			<Option target="serwer"/>
 		</Unit>

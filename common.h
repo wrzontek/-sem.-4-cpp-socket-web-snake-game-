@@ -39,11 +39,19 @@ extern void fatal(const char *fmt, ...);
 
 void create_timer(int &fd, int timer_type, int rounds_per_sec);
 
+uint32_t crc32buf(const void *buf, size_t size);
+
 struct __attribute__((__packed__)) client_msg {
     uint64_t session_id;
     uint8_t turn_direction;
     uint32_t next_expected_event_no;
     uint8_t player_name[NAME_LEN_MAX];
+};
+
+struct __attribute__((__packed__)) event_common {
+    uint32_t len;
+    uint32_t event_no;
+    uint8_t event_type;
 };
 
 struct __attribute__((__packed__)) event_new_game {

@@ -213,36 +213,6 @@ common.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/common.cpp.s
 .PHONY : common.cpp.s
 
-crc.o: crc.cpp.o
-
-.PHONY : crc.o
-
-# target to build an object file
-crc.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/crc.cpp.o
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/crc.cpp.o
-.PHONY : crc.cpp.o
-
-crc.i: crc.cpp.i
-
-.PHONY : crc.i
-
-# target to preprocess a source file
-crc.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/crc.cpp.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/crc.cpp.i
-.PHONY : crc.cpp.i
-
-crc.s: crc.cpp.s
-
-.PHONY : crc.s
-
-# target to generate assembly for a file
-crc.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/crc.cpp.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/serwer.dir/build.make CMakeFiles/serwer.dir/crc.cpp.s
-.PHONY : crc.cpp.s
-
 serwer.o: serwer.cpp.o
 
 .PHONY : serwer.o
@@ -286,9 +256,6 @@ help:
 	@echo "... common.o"
 	@echo "... common.i"
 	@echo "... common.s"
-	@echo "... crc.o"
-	@echo "... crc.i"
-	@echo "... crc.s"
 	@echo "... serwer.o"
 	@echo "... serwer.i"
 	@echo "... serwer.s"

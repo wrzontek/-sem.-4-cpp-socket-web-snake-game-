@@ -10,7 +10,6 @@
 #include <fcntl.h>
 #include <utmpx.h>
 #include <poll.h>
-#include "crc.h"
 #include "common.h"
 
 #define MAX_CONSECUTIVE_SERVER_MSG 10
@@ -180,6 +179,8 @@ int main(int argc, char *argv[]) {
     uint32_t maxy;
     uint32_t expected_event_no = 0;
     int last_key_down = 0;
+    std::string player_names_str;
+    int player_count;
 
     client_msg msg_to_server = {htobe64(session_id), turn_direction, htobe32(expected_event_no), 0};
     for (int i = 0; i < player_name.size(); i++)
@@ -188,8 +189,11 @@ int main(int argc, char *argv[]) {
     write(server_sock, (char *)&msg_to_server, 13 + player_name.size());
 
     char command_buf[20];    // na "LEFT_KEY_DOWN\n" itp
-    char *buf = (char *)calloc(DATAGRAM_MAX_SIZE, 1);
-    if (buf == NULL)
+    std::vector<int8_t >buf(DATAGRAM_MAX_SIZE);
+    std::cout << buf.size();
+    //char *buf = (char *)std::calloc(DATAGRAM_MAX_SIZE, sizeof(int8_t));
+    //char buf[500];
+    if (buf.data() == NULL)
         syserr("calloc");
 
 #pragma clang diagnostic push
@@ -197,14 +201,14 @@ int main(int argc, char *argv[]) {
     while (true) {
         int ret = poll(client, 3, -1);
 
-        if (ret <= 0)   // timer powinien nas budzić co CLIENT_TIMEOUT_SECONDS
+        if (ret <= 0)   // timer powinien nas budzić co UPDATE_NANOSECOND_INTERVAL
             syserr("poll or timer");
 
         if (client[0].revents & POLLIN) {
-            std::cout << "WIADOMOŚĆ OD SERWERA\n";
             for (int t = 0; t < MAX_CONSECUTIVE_SERVER_MSG; t++) {
                 // limit żeby gra była responsive na input gracza
-                ret = read(client[0].fd, buf, sizeof(buf) - 1);
+                std::cout << "WIADOMOŚĆ OD SERWERA\n";
+                ret = read(client[0].fd, buf.data(), buf.size());
 
                 if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                     std::cout << "BRAK" << std::endl;
@@ -213,44 +217,73 @@ int main(int argc, char *argv[]) {
                     break;
                 }
 
+                auto event_buf = buf.data();
                 while (ret > 0) {
-                    uint32_t len = be32toh(*(uint32_t *) (buf));
-                    uint8_t event_type = *(uint8_t *) (buf + 8);
+                    std::cout << "ret: " << ret << std::endl;
+                    //event_common *event_c = (event_common *)event_buf;
+                    uint32_t len = be32toh(*(uint32_t *) event_buf);
+                    uint32_t event_no = be32toh(*(uint32_t *) (event_buf + 4));
+                    uint8_t event_type = *(uint8_t *) (event_buf + 8);
+                    std::cout << "len, number, type: " << len << ", " << event_no << ", " << (int)event_type << std::endl;
 
-                    uint32_t my_crc32 = crc32buf(buf, len + 4);
-                    uint32_t sent_crc32 = htobe32(*(uint32_t *) (buf + 4 + len)); // ???
-                    std::cout << "crc32: " << my_crc32 << " " << sent_crc32 << std::endl;
-                    std::cout << "len and type: " << len << " " << (int)event_type << std::endl;
+                    uint32_t sent_crc32 = be32toh(*(uint32_t *) (event_buf + len + 4));
+                    uint32_t my_crc32 = crc32buf(event_buf, len + 4);
 
-                    if (my_crc32 != sent_crc32)
-                        break;
+                    std::cout << "crc32(sent, mine):" << sent_crc32 << " " << my_crc32 << std::endl;
 
-                    switch (event_type) {
-                        case TYPE_NEW_GAME:
-                            // event_no musi być 0
-                            std::cout << "NEW GAME\n";
-                            break;
-                        case TYPE_PLAYER_ELIMINATED:
-                            std::cout << "PLAYER ELIMINATED\n";
-                            break;
-                        case TYPE_GAME_OVER:
-                            expected_event_no = 0;
-                            std::cout << "GAME OVER\n";
-                            break;
-                        case TYPE_PIXEL:
-                            std::cout << "PIXEL\n";
-                            break;
-                        default:
-                            std::cout << "UNKNOWN, ignoring\n";
-                            break;
+                    //if (my_crc32 != sent_crc32)
+                    //    break;
+
+                    if (event_type == TYPE_NEW_GAME) {
+                        if (event_no != 0) {
+                            exit(1); // todo
+                        }
+                        maxx = be32toh(*(uint32_t *) (event_buf + 9));
+                        maxy = be32toh(*(uint32_t *) (event_buf + 13));
+                        std::cout << "NEW GAME\n";
+                        std::cout << "X, Y: " << maxx << " " << maxy << std::endl;
+                        player_count = 0;
+                        player_names_str = "";
+                        auto *player_names = event_buf + 17;
+                        int i = 0;
+                        while (player_names[i] != '\0') {
+                            // spacja to separator
+                            auto c = player_names[i];
+                            if (i > len - 13 || ((c < 33 || c > 126) && c != ' ')) {
+                                //exit(1); // todo
+                            }
+                            player_names_str += c;
+                            if (c == ' ')
+                                player_count ++;
+                            i++;
+                        }
+                        player_count++;
+                        std::cout << player_names_str << std::endl;
+                        std::cout << "player count: " << player_count << std::endl;
+
                     }
-                    return 0;
+                    else if (event_type == TYPE_PLAYER_ELIMINATED) {
+                            std::cout << "PLAYER ELIMINATED\n";
+                    }
+                    else if (event_type == TYPE_GAME_OVER) {
+                        expected_event_no = 0;
+                        std::cout << "NEW GAME\n";
+                    }
+                    else if (event_type == TYPE_PIXEL) {
+                        std::cout << "PIXEL\n";
+                    }
+                    else {
+                        std::cout << "UNKNOWN, ignoring\n";
+                        break;
+                    }
+
                     // jeśli poprawny evencik i event_no = expected to wysyłamy do gui i expected++
                     // i sprawdzamy czy kolejny event mamy zapisany, jak tak to wysyłamy wszystkie takie
 
                     // jeśli poprawny evencik ale event_no > expected to zapisujemy se i wyślemy potem
 
-                    ret -= ((int)len + 4);
+                    event_buf += (8 + len);
+                    ret -= (8 + (int)len);
                 }
             }
         }

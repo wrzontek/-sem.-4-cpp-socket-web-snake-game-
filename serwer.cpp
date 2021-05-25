@@ -13,7 +13,6 @@
 #include <poll.h>
 #include <variant>
 #include <sys/timerfd.h>
-#include "crc.h"
 #include "common.h"
 #include <cassert>
 
@@ -108,17 +107,34 @@ namespace {
                      std::map<uint64_t, sockaddr_in6> &observers,
                      char *event, size_t size) {
         std::cout << "SENDING!!!\n";
+
+        uint32_t len = be32toh(*(uint32_t *) event);
+        uint32_t event_no = be32toh(*(uint32_t *) (event + 4));
+        uint8_t event_type = *(uint8_t *) (event + 8);
+        std::cout << "len, number, type: " << len << ", " << event_no << ", " << (int)event_type << std::endl;
+        uint32_t sent_crc32 = be32toh(*(uint32_t *) (event + len + 4));
+/*        event_common *event_b = (event_common *)event;
+        uint32_t len = be32toh(event_b->len);
+        uint32_t event_no = be32toh(event_b->event_no);
+        uint8_t event_type = event_b->event_type;
+        uint32_t sent_crc32 = be32toh(*(uint32_t *) (event + len + 4));*/
+
+        std::cout << "crc32:" << sent_crc32 << std::endl;
+
         for (auto &pair: players) {
             player_info &client_player = pair.second;
             if (client_player.disconnected)
                 continue;
 
-            sendto(send_socket, event, size, 0,
+            std::cout << "Sending to player\n";
+            int dupa = sendto(send_socket, event, size, 0,
                    (sockaddr *)&client_player.address, sizeof(client_player.address));
+            std::cout << dupa << "<>" << size << std::endl;
         }
         for (auto &pair: observers) {
             auto addr = pair.second;
-            sendto(send_socket, event, sizeof(event_pixel), 0,
+            std::cout << "Sending to observer\n";
+            sendto(send_socket, event, size, 0,
                    (sockaddr *)&(addr), sizeof(addr));
         }
     }
@@ -166,12 +182,12 @@ namespace {
             event_new_game.list_and_crc[i] = player_list[i];
 
         uint32_t crc32 = htobe32(crc32buf((char *)&event_new_game, 17 + player_list.size()));
-
+        std::cout << "NEW GAME CRC32: " << be32toh(crc32) << std::endl;
         // todo tutaj te wskaźniki kopiowanka dziwne poprawić
-        strncpy((char *)&event_new_game + 17 + player_list.size(), (char *)&crc32, sizeof(crc32));
+        //memcpy((char *)&event_new_game + 17 + player_list.size(), &crc32, sizeof(uint32_t));
 
         game_events.emplace_back(event_new_game);
-        std::cout << "size: " << 21 + player_list.size() << std::endl;
+
         send_to_all(players, observers, (char *)&event_new_game, 21 + player_list.size());
     }
 
@@ -183,7 +199,6 @@ namespace {
         game_id = get_random();
         for (int i = 0; i < board.size(); i++)
             board[i] = NOT_EATEN;
-
 
         send_new_game(players, observers, game_events);
 
@@ -299,24 +314,24 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
             if (auto new_game_p = std::get_if<event_new_game>(&event_variant)) {
                 // TODO poprawić pewnie
                 event_new_game new_game = *new_game_p;
-                strncpy(event_buf, (const char *)&new_game, new_game.len + 8);
+                memcpy(event_buf, (const char *)&new_game, new_game.len + 8);
                 size = new_game.len + 8;
             } else if (auto pixel_p = std::get_if<event_pixel>(&event_variant)) {
                 event_pixel pixel = *pixel_p;
-                strncpy(event_buf, (const char *)&pixel, sizeof(pixel));
+                memcpy(event_buf, (const char *)&pixel, sizeof(pixel));
                 size = sizeof(pixel);
             } else if (auto elim_p = std::get_if<event_player_eliminated>(&event_variant)) {
                 event_player_eliminated elim = *elim_p;
-                strncpy(event_buf, (const char *)&elim, sizeof(elim));
+                memcpy(event_buf, (const char *)&elim, sizeof(elim));
                 size = sizeof(elim);
             } else if (auto game_over_p = std::get_if<event_game_over>(&event_variant)) {
                 event_game_over game_over = *game_over_p;
-                strncpy(event_buf, (const char *)&game_over, sizeof(game_over));
+                memcpy(event_buf, (const char *)&game_over, sizeof(game_over));
                 size = sizeof(game_over);
             }
 
             if (total_size + size <= DATAGRAM_MAX_SIZE) {
-                strncpy(buf + total_size, (const char *)&buf, size);
+                memcpy(buf + total_size, (const char *)&buf, size);
                 total_size += size;
             } else {
                 sendto(send_socket, (char *)&buf, total_size, 0,
