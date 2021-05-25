@@ -26,7 +26,12 @@
 
 namespace {
     uint64_t my_rand;
-    int port, turning_speed, rounds_per_sec, board_width, board_height, client_socket;
+    int client_socket;
+    int port = DEFAULT_SERVER_PORT;
+    int turning_speed = DEFAULT_TURNING_SPEED;
+    int rounds_per_sec = DEFAULT_ROUNDS_PER_SEC;
+    int board_width = DEFAULT_BOARD_WIDTH;
+    int board_height = DEFAULT_BOARD_HEIGHT;
 
     /* https://stackoverflow.com/questions/31502120/sin-and-cos-give-unexpected-results-for-well-known-angles */
     inline double degree_to_radian(double d) {
@@ -90,6 +95,10 @@ namespace {
                     fatal("Arguments: [-p n] [-s n] [-t n] [-v n] [-w n] [-h n]\n");
             }
         }
+
+        if (argc - optind != 0)
+            fatal("Arguments: [-p n] [-s n] [-t n] [-v n] [-w n] [-h n]\n");
+
     }
 
     bool check_game_over(std::map<std::string, player_info> &players) {
@@ -161,9 +170,11 @@ namespace {
                        std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
         std::cout << "SENDING NEW GAME\n";
         std::string player_list;
+        static char placeholder = (char)246; // placeholder char na zmiane na \0
+
         for (auto &pair : players) {
             std::string name = pair.first;
-            player_list += name + (char)246; // placeholder char na zmiane na \0
+            player_list += name + placeholder;
         }
         uint32_t player_list_size = player_list.size();
 
@@ -171,7 +182,7 @@ namespace {
 
         char *player_list_data = player_list.data();
         for (int i = 0; i < player_list_size; i++) {
-            if (player_list_data[i] == (char)246)
+            if (player_list_data[i] == placeholder)
                 player_list_data[i] = '\0';
         }
 
@@ -349,11 +360,6 @@ void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, char 
 }
 
 int main(int argc, char *argv[]) {
-    port = DEFAULT_SERVER_PORT;
-    turning_speed = DEFAULT_TURNING_SPEED;
-    rounds_per_sec = DEFAULT_ROUNDS_PER_SEC;
-    board_width = DEFAULT_BOARD_WIDTH;
-    board_height = DEFAULT_BOARD_HEIGHT;
     my_rand = time(NULL);
 
     get_args(argc, argv);

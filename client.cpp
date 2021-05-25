@@ -18,6 +18,11 @@
 
 namespace {
     uint64_t session_id;
+    uint32_t expected_event_no = 0;
+    uint8_t turn_direction = 0;
+    uint32_t maxx, maxy, player_count;
+    int last_key_down = 0;
+
     int server_sock, gui_sock;
     std::string player_name;
     char *server;
@@ -53,6 +58,9 @@ namespace {
                     fatal("Arguments: game_server [-n player_name] [-p n] [-i gui_server] [-r n]\n");
             }
         }
+        if (argc - optind != 0)
+            fatal("Arguments: game_server [-n player_name] [-p n] [-i gui_server] [-r n]\n");
+
         if (gui_addr_arg == NULL)
             gui_addr_arg = default_gui_addr;
         if (server_port == NULL)
@@ -153,6 +161,59 @@ namespace {
         // patrzymy czy mamy event == expected gotowy, wysyłamy wszystkie takie
         // TODO
     }
+
+    void handle_new_game(uint32_t len, uint32_t event_no, char *event_buf,
+                         std::string &msg_to_gui, std::map<uint8_t, std::string> &player_map) {
+        if (event_no != 0) {
+            exit(1); // todo
+        }
+
+        maxx = be32toh(*(uint32_t *) (event_buf + 9));
+        maxy = be32toh(*(uint32_t *) (event_buf + 13));
+
+        if (maxx > 9999 || maxy > 9999) { // todo
+            std::cerr << "board too large\n";
+            exit(1);
+        }
+        msg_to_gui = "NEW_GAME " + std::to_string(maxx) + " " + std::to_string(maxy) + " ";
+
+        player_count = 0;
+        auto *player_names = event_buf + 17;
+        int i = 0;
+        int new_player_number = 0;
+        std::string new_player_name;
+        while (true) {
+            if (i > len - 13) { // todo może 14
+                std::cerr << "player name list not null terminated\n";
+                exit(1);
+            }
+            auto c = player_names[i];
+            if ((c < 33 || c > 126) && c != '\0') {
+                std::cout << (int)c << std::endl;
+                std::cerr << "invalid char in player name list\n";
+                exit(1);
+            }
+
+
+            if (c == '\0') {
+                player_map.insert(std::pair(new_player_number, new_player_name));
+                new_player_name = "";
+                new_player_number++;
+                player_count++;
+
+                if (i == len - 14)
+                    break;
+
+                msg_to_gui += " ";
+            } else {
+                msg_to_gui += c;
+                new_player_name += c;
+            }
+
+            i++;
+        }
+        msg_to_gui += '\n';
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -172,11 +233,6 @@ int main(int argc, char *argv[]) {
     pollfd poll_arr[3];   // 0 - serwer, 1 - gui, 2 - timer
     init_poll(poll_arr);
 
-    uint8_t turn_direction = 0;
-    // set czy tam mapa graczy
-    uint32_t maxx, maxy, player_count;
-    uint32_t expected_event_no = 0;
-    int last_key_down = 0;
     std::map<uint32_t, std::string> ready_messages;
     std::map<uint8_t, std::string> player_map;
     std::string msg_to_gui;
@@ -215,10 +271,9 @@ int main(int argc, char *argv[]) {
                     break;
                 }
 
-                auto event_buf = buf.data();
+                char *event_buf = (char *)buf.data();
                 while (ret > 0) {
                     std::cout << "ret: " << ret << std::endl;
-                    //event_common *event_c = (event_common *)event_buf;
                     uint32_t len = be32toh(*(uint32_t *) event_buf);
                     uint32_t event_no = be32toh(*(uint32_t *) (event_buf + 4));
                     uint8_t event_type = *(uint8_t *) (event_buf + 8);
@@ -234,65 +289,16 @@ int main(int argc, char *argv[]) {
 
                     if (event_type == TYPE_NEW_GAME) {
                         std::cout << "NEW GAME\n";
-                        if (event_no != 0) {
-                            exit(1); // todo
-                        }
-                        expected_event_no = 1;
-                        uint32_t sent_maxx = *(uint32_t *) (event_buf + 9);
-                        uint32_t sent_maxy = *(uint32_t *) (event_buf + 13);
-
-                        maxx = be32toh(sent_maxx);
-                        maxy = be32toh(sent_maxy);
-
-                        if (maxx > 9999 || maxy > 9999) { // todo
-                            std::cerr << "board too large\n";
-                            exit(1);
-                        }
-                        msg_to_gui = "NEW_GAME " + std::to_string(sent_maxx) + " " + std::to_string(sent_maxy) + " ";
-
-                        player_count = 0;
-                        auto *player_names = event_buf + 17;
-                        int i = 0;
-                        int new_player_number = 0;
-                        std::string new_player_name;
-                        while (true) {
-                            if (i > len - 13) { // todo może 14
-                                std::cerr << "player name list not null terminated\n";
-                                exit(1);
-                            }
-                            auto c = player_names[i];
-                            if ((c < 33 || c > 126) && c != '\0') {
-                                std::cout << (int)c << std::endl;
-                                std::cerr << "invalid char in player name list\n";
-                                exit(1);
-                            }
-
-
-                            if (c == '\0') {
-                                player_map.insert(std::pair(new_player_number, new_player_name));
-                                new_player_name = "";
-                                new_player_number++;
-                                player_count++;
-
-                                if (player_count == 2)
-                                    break;
-
-                                msg_to_gui += " ";
-                            } else {
-                                msg_to_gui += c;
-                                new_player_name += c;
-                            }
-
-                            i++;
-                        }
-                        msg_to_gui += '\n';
+                        handle_new_game(len, event_no, event_buf, msg_to_gui, player_map);
                     }
                     else if (event_type == TYPE_PLAYER_ELIMINATED) {
                             std::cout << "PLAYER ELIMINATED\n";
+                            // TODO
                     }
                     else if (event_type == TYPE_GAME_OVER) {
-                        expected_event_no = 0;
                         std::cout << "GAME OVER\n";
+                        expected_event_no = 0;
+                        // TODO
                     }
                     else if (event_type == TYPE_PIXEL) {
                         std::cout << "PIXEL\n";
@@ -301,17 +307,16 @@ int main(int argc, char *argv[]) {
                             std::cerr << "player number too big\n";
                             exit(1);
                         }
-                        uint32_t sent_x = be32toh(*(uint32_t *) (event_buf + 10));
-                        uint32_t sent_y = be32toh(*(uint32_t *) (event_buf + 14));
 
-                        uint32_t x = be32toh(sent_x);
-                        uint32_t y = be32toh(sent_y);
+                        uint32_t x = be32toh(*(uint32_t *) (event_buf + 10));
+                        uint32_t y = be32toh(*(uint32_t *) (event_buf + 14));
+
                         if (x > maxx || y > maxy) {
                             std::cerr << "pixel outside board\n";
                             exit(1);
                         }
 
-                        msg_to_gui = "PIXEL " + std::to_string(sent_x) + " " + std::to_string(sent_y) + " " + player_map[player_number] + "\n";
+                        msg_to_gui = "PIXEL " + std::to_string(x) + " " + std::to_string(y) + " " + player_map[player_number] + "\n";
                     }
                     else {
                         std::cout << "UNKNOWN, ignoring\n";
