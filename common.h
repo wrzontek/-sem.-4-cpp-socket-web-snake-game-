@@ -24,7 +24,7 @@
 
 #define DEFAULT_SERVER_PORT 2021
 
-#define DATAGRAM_MAX_SIZE 1024
+#define DATAGRAM_MAX_SIZE 550
 #define CLIENT_TIMEOUT_SECONDS 2
 
 #define TIMER_ROUND 0
@@ -53,6 +53,7 @@ struct __attribute__((__packed__)) client_msg {
 };
 
 struct __attribute__((__packed__)) event_new_game {
+    uint32_t game_id;
     uint32_t len;
     uint32_t event_no;
     uint8_t event_type;
@@ -63,6 +64,7 @@ struct __attribute__((__packed__)) event_new_game {
 };
 
 struct __attribute__((__packed__)) event_pixel {
+    uint32_t game_id;
     uint32_t len;
     uint32_t event_no;
     uint8_t event_type;
@@ -75,6 +77,7 @@ struct __attribute__((__packed__)) event_pixel {
 };
 
 struct __attribute__((__packed__)) event_player_eliminated {
+    uint32_t game_id;
     uint32_t len;
     uint32_t event_no;
     uint8_t event_type;
@@ -85,6 +88,7 @@ struct __attribute__((__packed__)) event_player_eliminated {
 };
 
 struct __attribute__((__packed__)) event_game_over {
+    uint32_t game_id;
     uint32_t len;
     uint32_t event_no;
     uint8_t event_type;

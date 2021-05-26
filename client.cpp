@@ -19,6 +19,7 @@
 
 namespace {
     uint64_t session_id;
+    uint32_t current_game_id = 0;
     uint32_t expected_event_no = 0;
     uint32_t last_event_no = 0; // event 0 nigdy nie bedzie game_overem, 0 tutaj to placeholder
     uint8_t turn_direction = 0;
@@ -199,8 +200,8 @@ namespace {
             exit(1);
         }
 
-        maxx = be32toh(*(uint32_t *) (event_buf + 9));
-        maxy = be32toh(*(uint32_t *) (event_buf + 13));
+        maxx = be32toh(*(uint32_t *) (event_buf + 13));
+        maxy = be32toh(*(uint32_t *) (event_buf + 17));
 
         if (maxx > BOARD_WIDTH_MAX || maxy > BOARD_HEIGHT_MAX) {
             std::cerr << "board too large\n";
@@ -209,7 +210,7 @@ namespace {
         msg_to_gui = "NEW_GAME " + std::to_string(maxx) + " " + std::to_string(maxy) + " ";
 
         player_count = 0;
-        auto *player_names = event_buf + 17;
+        auto *player_names = event_buf + 21;
         int i = 0;
         int new_player_number = 0;
         std::string new_player_name;
@@ -247,14 +248,14 @@ namespace {
 
     void handle_pixel(const char *event_buf, std::string &msg_to_gui,
                       std::map<uint8_t, std::string> &player_map) {
-        uint8_t player_number = *(uint8_t *) (event_buf + 9);
+        uint8_t player_number = *(uint8_t *) (event_buf + 13);
         if (player_number >= player_count) {
             std::cerr << "player number too big\n";
             exit(1);
         }
 
-        uint32_t x = be32toh(*(uint32_t *) (event_buf + 10));
-        uint32_t y = be32toh(*(uint32_t *) (event_buf + 14));
+        uint32_t x = be32toh(*(uint32_t *) (event_buf + 14));
+        uint32_t y = be32toh(*(uint32_t *) (event_buf + 18));
 
         if (x > maxx || y > maxy) {
             std::cerr << "pixel outside board\n";
@@ -323,13 +324,15 @@ int main(int argc, char *argv[]) {
                 char *event_buf = (char *)buf.data();
                 while (ret > 0) {
                     std::cout << "ret: " << ret << std::endl;
-                    uint32_t len = be32toh(*(uint32_t *) event_buf);
-                    uint32_t event_no = be32toh(*(uint32_t *) (event_buf + 4));
-                    uint8_t event_type = *(uint8_t *) (event_buf + 8);
+                    uint32_t sent_game_id = be32toh(*(uint32_t *) event_buf);
+                    uint32_t len = be32toh(*(uint32_t *) (event_buf + 4));
+                    uint32_t event_no = be32toh(*(uint32_t *) (event_buf + 8));
+                    uint8_t event_type = *(uint8_t *) (event_buf + 12);
+                    std::cout << "game id (sent, mine):" << sent_game_id << " " << current_game_id << std::endl;
                     std::cout << "len, number, type: " << len << ", " << event_no << ", " << (int)event_type << std::endl;
 
-                    uint32_t sent_crc32 = be32toh(*(uint32_t *) (event_buf + len + 4));
-                    uint32_t my_crc32 = crc32buf(event_buf, len + 4);
+                    uint32_t sent_crc32 = be32toh(*(uint32_t *) (event_buf + len + 8));
+                    uint32_t my_crc32 = crc32buf(event_buf + 4, len + 4);
 
                     std::cout << "crc32(sent, mine):" << sent_crc32 << " " << my_crc32 << std::endl;
 
@@ -342,7 +345,7 @@ int main(int argc, char *argv[]) {
                     }
                     else if (event_type == TYPE_PLAYER_ELIMINATED) {
                         std::cout << "PLAYER ELIMINATED\n";
-                        uint8_t player_number = *(uint8_t *) (event_buf + 9);
+                        uint8_t player_number = *(uint8_t *) (event_buf + 13);
                         if (player_number >= player_count) {
                             std::cerr << "player number too big\n";
                             exit(1);
@@ -382,8 +385,8 @@ int main(int argc, char *argv[]) {
                         ready_messages.insert(std::pair(event_no, msg_to_gui));
                     }
 
-                    event_buf += (8 + len);
-                    ret -= (8 + (int)len);
+                    event_buf += (12 + len);
+                    ret -= (12 + (int)len);
                 }
             }
         }

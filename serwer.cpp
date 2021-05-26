@@ -26,6 +26,7 @@
 
 namespace {
     uint64_t my_rand;
+    uint32_t game_id;
     int client_socket;
     int port = DEFAULT_SERVER_PORT;
     int turning_speed = DEFAULT_TURNING_SPEED;
@@ -66,7 +67,6 @@ namespace {
                 }
             }
         }
-
         return false;
     }
 
@@ -202,12 +202,14 @@ namespace {
                      char *event, size_t size) {
         std::cout << "SENDING!!!\n";
 
-        uint32_t len = be32toh(*(uint32_t *) event);
-        uint32_t event_no = be32toh(*(uint32_t *) (event + 4));
-        uint8_t event_type = *(uint8_t *) (event + 8);
+        uint32_t sent_game_id = be32toh(*(uint32_t *) event);
+        uint32_t len = be32toh(*(uint32_t *) (event + 4));
+        uint32_t event_no = be32toh(*(uint32_t *) (event + 8));
+        uint8_t event_type = *(uint8_t *) (event + 12);
+        std::cout << "game id (sent, actual):" << sent_game_id << " " << game_id << std::endl;
         std::cout << "len, number, type: " << len << ", " << event_no << ", " << (int) event_type << std::endl;
-        uint32_t sent_crc32 = be32toh(*(uint32_t *) (event + len + 4));
-        uint32_t my_crc32 = crc32buf(event, len + 4);
+        uint32_t sent_crc32 = be32toh(*(uint32_t *) (event + len + 8));
+        uint32_t my_crc32 = crc32buf(event, len + 8);
 
         std::cout << "crc32(sent, mine):" << sent_crc32 << " " << my_crc32 << std::endl;
 
@@ -232,20 +234,22 @@ namespace {
                                    bool &game_in_progress, std::set<client_id_t> &observers,
                                    std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
         player.in_game = false;
-        event_player_eliminated event_elimination{htobe32((uint32_t) sizeof(event_player_eliminated) - 8),
+        event_player_eliminated event_elimination{htobe32(game_id),
+                                                  htobe32((uint32_t) sizeof(event_player_eliminated) - 12),
                                                   htobe32((uint32_t) game_events.size()),
                                                   TYPE_PLAYER_ELIMINATED, (uint8_t)player.number, 0};
-        event_elimination.crc32 = htobe32(crc32buf((char *) &event_elimination, sizeof(event_player_eliminated) - 4));
+        event_elimination.crc32 = htobe32(crc32buf((char *) &event_elimination + 4, sizeof(event_player_eliminated) - 8));
         game_events.emplace_back(event_elimination);
 
         send_to_all(players, observers, (char *) &event_elimination, sizeof(event_elimination));
 
         if (check_game_over(players)) {
             game_in_progress = false;
-            event_game_over event_game_over{htobe32((uint32_t) sizeof(event_game_over) - 8),
+            event_game_over event_game_over{htobe32(game_id),
+                                            htobe32((uint32_t) sizeof(event_game_over) - 12),
                                             htobe32((uint32_t) game_events.size()),
                                             TYPE_GAME_OVER, 0};
-            event_game_over.crc32 = htobe32(crc32buf((char *) &event_game_over, sizeof(event_game_over) - 4));
+            event_game_over.crc32 = htobe32(crc32buf((char *) &event_game_over + 4, sizeof(event_game_over) - 8));
             game_events.emplace_back(event_game_over);
 
             send_to_all(players, observers, (char *) &event_game_over, sizeof(event_game_over));
@@ -273,24 +277,24 @@ namespace {
 
         uint32_t len = 13 + player_list_size;
 
-        event_new_game event_new_game{htobe32(len),
+        event_new_game event_new_game{htobe32(game_id), htobe32(len),
                                       htobe32(game_events.size()), TYPE_NEW_GAME,
                                       htobe32(board_width), htobe32(board_height), 0};
 
         for (int i = 0; i < player_list_size; i++)
             event_new_game.list_and_crc[i] = player_list_data[i];
 
-        uint32_t crc32 = htobe32(crc32buf((char *) &event_new_game, len + 4));
+        uint32_t crc32 = htobe32(crc32buf((char *) &event_new_game + 4, len + 4));
 
-        memcpy((char *) &event_new_game + len + 4, &crc32, sizeof(uint32_t));
+        memcpy((char *) &event_new_game + len + 8, &crc32, sizeof(uint32_t));
 
         game_events.emplace_back(event_new_game);
 
-        send_to_all(players, observers, (char *) &event_new_game, len + 8);
+        send_to_all(players, observers, (char *) &event_new_game, len + 12);
     }
 
 
-    void init_game(uint32_t &game_id, std::map<std::string, player_info_t> &players,
+    void init_game(std::map<std::string, player_info_t> &players,
                    std::set<client_id_t> &observers, std::vector<bool> &board,
                    std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events,
                    bool &game_in_progress) {
@@ -307,8 +311,8 @@ namespace {
             player.number = n;
             std::cout << "ruch gracza " << player.number << std::endl;
             n++;
-            uint32_t x = player.x = (get_random() % (board_width - 1) + 0.5);
-            uint32_t y = player.y = (get_random() % (board_height - 1) + 0.5);
+            uint32_t x = player.x = (get_random() % (board_width) + 0.5);
+            uint32_t y = player.y = (get_random() % (board_height) + 0.5);
             player.direction = get_random() % 360;
 
             std::cout << x << " " << y << "  " << y * board_width + x << " <> " << board.size() << std::endl;
@@ -320,11 +324,12 @@ namespace {
             } else {
                 std::cout << "PIXEL\n";
                 board[y * board_width + x] = EATEN;
-                event_pixel event_pixel{htobe32(sizeof(event_pixel) - 8),
+                event_pixel event_pixel{htobe32(game_id),
+                                        htobe32(sizeof(event_pixel) - 12),
                                         htobe32((uint32_t) game_events.size()),
                                         TYPE_PIXEL, (uint8_t) player.number,
                                         htobe32(x), htobe32(y), 0};
-                event_pixel.crc32 = htobe32(crc32buf((char *) &event_pixel, sizeof(event_pixel) - 4));
+                event_pixel.crc32 = htobe32(crc32buf((char *) &event_pixel + 4, sizeof(event_pixel) - 8));
                 game_events.emplace_back(event_pixel);
 
                 send_to_all(players, observers, (char *) &event_pixel, sizeof(event_pixel));
@@ -332,7 +337,7 @@ namespace {
         }
     }
 
-    void do_turn(uint32_t &game_id, std::map<std::string, player_info_t> &players,
+    void do_turn(std::map<std::string, player_info_t> &players,
                  std::set<client_id_t> &observers, std::vector<bool> &board,
                  std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events,
                  bool &game_in_progess) {
@@ -363,12 +368,13 @@ namespace {
                         return;
                 } else {
                     board[y * board_width + x] = EATEN;
-                    event_pixel event_pixel{htobe32(sizeof(event_pixel) - 8),
+                    event_pixel event_pixel{htobe32(game_id),
+                                            htobe32(sizeof(event_pixel) - 12),
                                             htobe32((uint32_t) game_events.size()),
                                             TYPE_PIXEL, (uint8_t) player.number,
                                             htobe32(x), htobe32(y), 0};
 
-                    event_pixel.crc32 = htobe32(crc32buf((char *) &event_pixel, sizeof(event_pixel) - 4));
+                    event_pixel.crc32 = htobe32(crc32buf((char *) &event_pixel + 4, sizeof(event_pixel) - 8));
                     game_events.emplace_back(event_pixel);
 
                     send_to_all(players, observers, (char *) &event_pixel, sizeof(event_pixel));
@@ -413,8 +419,8 @@ namespace {
                 if (auto new_game_p = std::get_if<event_new_game>(&event_variant)) {
                     event_new_game new_game = *new_game_p;
                     uint32_t len = htobe32(new_game.len);
-                    memcpy(event_buf, (const char *) &new_game, len + 8);
-                    size = (int) len + 8;
+                    memcpy(event_buf, (const char *) &new_game, len + 12);
+                    size = (int) len + 12;
                 }
                 else if (auto pixel_p = std::get_if<event_pixel>(&event_variant)) {
                     event_pixel pixel = *pixel_p;
@@ -444,11 +450,11 @@ namespace {
                 }
             }
 
-            uint32_t len = be32toh(*(uint32_t *) buf_vector.data());
-            uint32_t event_no = be32toh(*(uint32_t *) (buf_vector.data() + 4));
-            uint8_t event_type = *(uint8_t *) (buf_vector.data() + 8);
+            uint32_t len = be32toh(*(uint32_t *) (buf_vector.data() + 4));
+            uint32_t event_no = be32toh(*(uint32_t *) (buf_vector.data() + 8));
+            uint8_t event_type = *(uint8_t *) (buf_vector.data() + 12);
             std::cout << "len, number, type: " << len << ", " << event_no << ", " << (int) event_type << std::endl;
-            uint32_t sent_crc32 = be32toh(*(uint32_t *) (buf_vector.data() + len + 4));
+            uint32_t sent_crc32 = be32toh(*(uint32_t *) (buf_vector.data() + len + 8));
             std::cout << "crc32:" << sent_crc32 << std::endl;
 
             sendto(client_socket, (char *) buf_vector.data(), total_size, 0,
@@ -499,11 +505,10 @@ namespace {
 }
 
 int main(int argc, char *argv[]) {
-    my_rand = time(NULL);
+    my_rand = (uint32_t)time(NULL);
 
     get_args(argc, argv);
 
-    uint32_t game_id;
     std::map<std::string, player_info_t> players; // mapujemy nazwę do informacji
     int ready_players = 0;
     //std::map<uint64_t, sockaddr_in6> observers; // session id do adresu
@@ -709,11 +714,11 @@ int main(int argc, char *argv[]) {
             poll_arr[1].revents = 0;
 
             if (game_in_progress) {
-                do_turn(game_id, players, observers, board, game_events, game_in_progress);
+                do_turn(players, observers, board, game_events, game_in_progress);
             } else if (ready_players >= 2 && ready_players == player_ids.size()) {
                 std::cout << "ZACZYNAM GRĘ\n";
                 game_in_progress = true;
-                init_game(game_id, players, observers, board, game_events, game_in_progress);
+                init_game(players, observers, board, game_events, game_in_progress);
             }
 
             bool any_player_in_game = false;
