@@ -61,34 +61,94 @@ namespace {
         while ((opt = getopt(argc, argv, "p:s:t:v:w:h:")) != -1) {
             switch (opt) {
                 case 'p':
-                    port = atoi(optarg);
-                    if (port < 2 || port > 65535)
-                        fatal("invalid port argument");
+                    try {
+                        std::string arg = optarg;
+                        std::size_t pos;
+                        port = std::stoi(arg, &pos);
+                        if (pos < arg.size())
+                            fatal("Trailing characters after number argument");
+                        if (port < 2 || port > 65535)
+                            fatal("invalid port argument");
+                    } catch (std::invalid_argument const &ex) {
+                        fatal("Invalid number argument");
+                    } catch (std::out_of_range const &ex) {
+                        fatal("Number argument out of range");
+                    }
                     break;
                 case 's':
-                    my_rand = atoi(optarg);
-                    if (my_rand < 1 || my_rand > 4294967295)
-                        fatal("invalid seed argument");
+                    try {
+                        std::string arg = optarg;
+                        std::size_t pos;
+                        my_rand = std::stoi(arg, &pos);
+                        if (pos < arg.size())
+                            fatal("Trailing characters after number argument");
+                        if (my_rand < 1 || my_rand > 4294967295)
+                            fatal("invalid seed argument");
+                    } catch (std::invalid_argument const &ex) {
+                        fatal("Invalid number argument");
+                    } catch (std::out_of_range const &ex) {
+                        fatal("Number argument out of range");
+                    }
                     break;
                 case 't':
-                    turning_speed = atoi(optarg);
-                    if (turning_speed < 1 || turning_speed > 90)
-                        fatal("invalid turning speed argument");
+                    try {
+                        std::string arg = optarg;
+                        std::size_t pos;
+                        turning_speed = std::stoi(arg, &pos);
+                        if (pos < arg.size())
+                            fatal("Trailing characters after number argument");
+                        if (turning_speed < 1 || turning_speed > 90)
+                            fatal("invalid turning speed argument");
+                    } catch (std::invalid_argument const &ex) {
+                        fatal("Invalid number argument");
+                    } catch (std::out_of_range const &ex) {
+                        fatal("Number argument out of range");
+                    }
                     break;
                 case 'v':
-                    rounds_per_sec = atoi(optarg);
-                    if (rounds_per_sec < 1 || rounds_per_sec > 250)
-                        fatal("invalid rounds per second argument");
+                    try {
+                        std::string arg = optarg;
+                        std::size_t pos;
+                        rounds_per_sec = std::stoi(arg, &pos);
+                        if (pos < arg.size())
+                            fatal("Trailing characters after number argument");
+                        if (rounds_per_sec < 1 || rounds_per_sec > 250)
+                            fatal("invalid rounds per second argument");
+                    } catch (std::invalid_argument const &ex) {
+                        fatal("Invalid number argument");
+                    } catch (std::out_of_range const &ex) {
+                        fatal("Number argument out of range");
+                    }
                     break;
                 case 'w':
-                    board_width = atoi(optarg);
-                    if (board_width < BOARD_WIDTH_MIN || board_width > BOARD_WIDTH_MAX)
-                        fatal("invalid board width argument");
+                    try {
+                        std::string arg = optarg;
+                        std::size_t pos;
+                        board_width = std::stoi(arg, &pos);
+                        if (pos < arg.size())
+                            fatal("Trailing characters after number argument");
+                        if (board_width < BOARD_WIDTH_MIN || board_width > BOARD_WIDTH_MAX)
+                            fatal("invalid board width argument");
+                    } catch (std::invalid_argument const &ex) {
+                        fatal("Invalid number argument");
+                    } catch (std::out_of_range const &ex) {
+                        fatal("Number argument out of range");
+                    }
                     break;
                 case 'h':
-                    board_height = atoi(optarg);
-                    if (board_height < BOARD_HEIGHT_MIN || board_height > BOARD_HEIGHT_MAX)
-                        fatal("invalid board height argument");
+                    try {
+                        std::string arg = optarg;
+                        std::size_t pos;
+                        board_height = std::stoi(arg, &pos);
+                        if (pos < arg.size())
+                            fatal("Trailing characters after number argument");
+                        if (board_height < BOARD_HEIGHT_MIN || board_height > BOARD_HEIGHT_MAX)
+                            fatal("invalid board height argument");
+                    } catch (std::invalid_argument const &ex) {
+                        fatal("Invalid number argument");
+                    } catch (std::out_of_range const &ex) {
+                        fatal("Number argument out of range");
+                    }
                     break;
                 default:
                     fatal("Arguments: [-p n] [-s n] [-t n] [-v n] [-w n] [-h n]\n");
@@ -497,7 +557,7 @@ int main(int argc, char *argv[]) {
                     break;
                 }
 
-                if (ret != sizeof(client_msg) || in_msg.turn_direction > 2)
+                if (in_msg.turn_direction > 2)
                     continue;
 
                 uint64_t session_id = be64toh(in_msg.session_id);
@@ -641,6 +701,7 @@ int main(int argc, char *argv[]) {
                     player.in_game = false;
                     if (player.disconnected) {
                         std::cout << pair.first << std::endl;
+                        poll_arr[client_poll_position[player.id]].revents = 0;
                         poll_arr[client_poll_position[player.id]].fd = -1;
                         client_poll_position.erase(player.id);
                         players.erase(pair.first);

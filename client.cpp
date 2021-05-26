@@ -183,6 +183,8 @@ namespace {
                 // wysłaliśmy właśnie ostatni event w tej rozgrywce
                 expected_event_no = 0;
                 last_event_no = 0;
+                ready_messages.clear();
+                break;
             }
 
             expected_event_no++;
@@ -193,7 +195,8 @@ namespace {
     void handle_new_game(uint32_t len, uint32_t event_no, const char *event_buf,
                          std::string &msg_to_gui, std::map<uint8_t, std::string> &player_map) {
         if (event_no != 0) {
-            exit(1); // todo
+            std::cerr << "new game with nonzero event_no\n";
+            exit(1);
         }
 
         maxx = be32toh(*(uint32_t *) (event_buf + 9));
@@ -368,10 +371,12 @@ int main(int argc, char *argv[]) {
                             // wysłaliśmy właśnie ostatni event w tej rozgrywce
                             expected_event_no = 0;
                             last_event_no = 0;
+                            ready_messages.clear();
                         }
-
-                        expected_event_no++;
-                        send_ready_messages(poll_arr[1].fd, ready_messages);
+                        else {
+                            expected_event_no++;
+                            send_ready_messages(poll_arr[1].fd, ready_messages);
+                        }
                     }
                     else if (event_no > expected_event_no && ready_messages.find(event_no) == ready_messages.end()) {
                         ready_messages.insert(std::pair(event_no, msg_to_gui));

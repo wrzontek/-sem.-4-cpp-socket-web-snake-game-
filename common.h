@@ -24,8 +24,7 @@
 
 #define DEFAULT_SERVER_PORT 2021
 
-#define DATAGRAM_MAX_SIZE 30000
-// todo ^^ może inne
+#define DATAGRAM_MAX_SIZE 1024
 #define CLIENT_TIMEOUT_SECONDS 2
 
 #define TIMER_ROUND 0
