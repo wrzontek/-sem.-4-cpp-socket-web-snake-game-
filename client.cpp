@@ -13,7 +13,7 @@
 #include <map>
 #include "common.h"
 
-#define MAX_CONSECUTIVE_SERVER_MSG 10
+#define MAX_CONSECUTIVE_SERVER_MSG 250
 #define MAX_CONSECUTIVE_GUI_MSG 50
 #define COMMAND_BUF_SIZE 100
 

@@ -99,8 +99,13 @@ void create_timer(int &fd, int timer_type, int rounds_per_sec) {
     if (timer_type == TIMER_ROUND) {
         new_value.it_value.tv_sec = now.tv_sec;
         new_value.it_value.tv_nsec = now.tv_nsec;
-        new_value.it_interval.tv_sec = 0;
-        new_value.it_interval.tv_nsec = 1000000000 / rounds_per_sec;
+        if (rounds_per_sec == 1) {
+            new_value.it_interval.tv_sec = 1;
+            new_value.it_interval.tv_nsec = 0;
+        } else {
+            new_value.it_interval.tv_sec = 0;
+            new_value.it_interval.tv_nsec = 1000000000 / rounds_per_sec;
+        }
     }
     else if (timer_type == TIMER_TIMEOUT) {
         new_value.it_value.tv_sec = now.tv_sec + CLIENT_TIMEOUT_SECONDS;

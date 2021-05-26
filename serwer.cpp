@@ -21,7 +21,7 @@
 #define DEFAULT_BOARD_HEIGHT 480
 
 #define CLIENT_MAX (2 +  MAX_PLAYERS)
-#define MAX_CONSECUTIVE_CLIENT_MSG 20
+#define MAX_CONSECUTIVE_CLIENT_MSG 100
 
 namespace {
     uint64_t my_rand;
@@ -56,6 +56,12 @@ namespace {
         sockaddr_in6 address;
     };
 
+    struct client_id {
+        uint64_t session_id;
+        in_port_t	  port;
+        in6_addr addr;
+    };
+
     void get_args(int argc, char *argv[]) {
         int opt;
         while ((opt = getopt(argc, argv, "p:s:t:v:w:h:")) != -1) {
@@ -79,7 +85,7 @@ namespace {
                     try {
                         std::string arg = optarg;
                         std::size_t pos;
-                        my_rand = std::stoi(arg, &pos);
+                        my_rand = std::stoul(arg, &pos);
                         if (pos < arg.size())
                             fatal("Trailing characters after number argument");
                         if (my_rand < 1 || my_rand > 4294967295)
@@ -678,6 +684,7 @@ int main(int argc, char *argv[]) {
             if (game_in_progress) {
                 do_turn(game_id, players, observers, board, game_events, game_in_progress);
             } else if (ready_players >= 2 && ready_players == player_ids.size()) {
+                std::cout << "ZACZYNAM GRĘ\n";
                 game_in_progress = true;
                 init_game(game_id, players, observers, board, game_events, game_in_progress);
             }
