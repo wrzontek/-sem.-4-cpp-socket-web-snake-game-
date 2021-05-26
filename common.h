@@ -52,12 +52,6 @@ struct __attribute__((__packed__)) client_msg {
     uint8_t player_name[NAME_LEN_MAX];
 };
 
-struct __attribute__((__packed__)) event_common {
-    uint32_t len;
-    uint32_t event_no;
-    uint8_t event_type;
-};
-
 struct __attribute__((__packed__)) event_new_game {
     uint32_t len;
     uint32_t event_no;

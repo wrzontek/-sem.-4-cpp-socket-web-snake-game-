@@ -13,6 +13,7 @@
 #include <poll.h>
 #include <variant>
 #include <sys/timerfd.h>
+#include <set>
 #include "common.h"
 
 #define DEFAULT_TURNING_SPEED 6
@@ -43,10 +44,36 @@ namespace {
         return result;
     }
 
-    struct player_info {
+    struct client_id_t {
+        uint64_t session_id;
+        in_port_t port;
+        in6_addr addr;
+    };
+
+    inline bool operator<(const client_id_t& lhs, const client_id_t& rhs)
+    {
+        if (lhs.session_id < rhs.session_id)
+            return true;
+        if (lhs.session_id == rhs.session_id) {
+            if (lhs.port < rhs.port)
+                return true;
+            if (lhs.port == rhs.port) {
+                uint8_t	*lhs_addr = (uint8_t *)&lhs.addr;
+                uint8_t	*rhs_addr = (uint8_t *)&rhs.addr;
+                for (int i = 0; i < sizeof(lhs.addr); i++) {
+                    if (lhs_addr[i] < rhs_addr[i])
+                        return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    struct player_info_t {
         bool disconnected;
         int16_t number;
-        uint64_t id;
+        client_id_t id;
         bool ready;
         bool in_game;
         double x;
@@ -54,12 +81,6 @@ namespace {
         int16_t direction;
         uint8_t turn_direction;
         sockaddr_in6 address;
-    };
-
-    struct client_id {
-        uint64_t session_id;
-        in_port_t	  port;
-        in6_addr addr;
     };
 
     void get_args(int argc, char *argv[]) {
@@ -166,7 +187,7 @@ namespace {
 
     }
 
-    bool check_game_over(std::map<std::string, player_info> &players) {
+    bool check_game_over(std::map<std::string, player_info_t> &players) {
         int alive_players = 0;
         for (auto &pair2: players) {
             if (pair2.second.in_game)
@@ -176,8 +197,8 @@ namespace {
         return alive_players == 1;
     }
 
-    void send_to_all(std::map<std::string, player_info> &players,
-                     std::map<uint64_t, sockaddr_in6> &observers,
+    void send_to_all(std::map<std::string, player_info_t> &players,
+                     std::set<client_id_t> &observers,
                      char *event, size_t size) {
         std::cout << "SENDING!!!\n";
 
@@ -191,7 +212,7 @@ namespace {
         std::cout << "crc32(sent, mine):" << sent_crc32 << " " << my_crc32 << std::endl;
 
         for (auto &pair: players) {
-            player_info &client_player = pair.second;
+            player_info_t &client_player = pair.second;
             if (client_player.disconnected)
                 continue;
 
@@ -199,16 +220,16 @@ namespace {
             sendto(client_socket, event, size, 0,
                    (sockaddr *) &client_player.address, sizeof(client_player.address));
         }
-        for (auto &pair: observers) {
-            auto addr = pair.second;
+        for (auto &observer: observers) {
+            auto addr = observer.addr;
             std::cout << "Sending to observer\n";
             sendto(client_socket, event, size, 0,
                    (sockaddr *) &(addr), sizeof(addr));
         }
     }
 
-    void handle_player_elimination(player_info &player, std::map<std::string, player_info> &players,
-                                   bool &game_in_progress, std::map<uint64_t, sockaddr_in6> &observers,
+    void handle_player_elimination(player_info_t &player, std::map<std::string, player_info_t> &players,
+                                   bool &game_in_progress, std::set<client_id_t> &observers,
                                    std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
         player.in_game = false;
         event_player_eliminated event_elimination{htobe32((uint32_t) sizeof(event_player_eliminated) - 8),
@@ -231,8 +252,8 @@ namespace {
         }
     }
 
-    void send_new_game(std::map<std::string, player_info> &players,
-                       std::map<uint64_t, sockaddr_in6> &observers,
+    void send_new_game(std::map<std::string, player_info_t> &players,
+                       std::set<client_id_t> &observers,
                        std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
         std::cout << "SENDING NEW GAME\n";
         std::string player_list;
@@ -269,8 +290,8 @@ namespace {
     }
 
 
-    void init_game(uint32_t &game_id, std::map<std::string, player_info> &players,
-                   std::map<uint64_t, sockaddr_in6> &observers, std::vector<bool> &board,
+    void init_game(uint32_t &game_id, std::map<std::string, player_info_t> &players,
+                   std::set<client_id_t> &observers, std::vector<bool> &board,
                    std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events,
                    bool &game_in_progress) {
         game_id = get_random();
@@ -281,7 +302,7 @@ namespace {
 
         int n = 0;
         for (auto &pair: players) {
-            player_info &player = pair.second;
+            player_info_t &player = pair.second;
             player.in_game = true;
             player.number = n;
             std::cout << "ruch gracza " << player.number << std::endl;
@@ -311,13 +332,13 @@ namespace {
         }
     }
 
-    void do_turn(uint32_t &game_id, std::map<std::string, player_info> &players,
-                 std::map<uint64_t, sockaddr_in6> &observers, std::vector<bool> &board,
+    void do_turn(uint32_t &game_id, std::map<std::string, player_info_t> &players,
+                 std::set<client_id_t> &observers, std::vector<bool> &board,
                  std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events,
                  bool &game_in_progess) {
 
         for (auto &pair: players) {
-            player_info &player = pair.second;
+            player_info_t &player = pair.second;
             if (player.in_game) {
                 std::cout << "ruch gracza " << player.number << std::endl;
                 if (player.turn_direction == TURN_RIGHT)
@@ -435,10 +456,10 @@ namespace {
         }
     }
 
-    void kick_timeouted_clients(pollfd *poll_arr, std::map<std::string, player_info> &players,
-                                std::map<uint64_t, sockaddr_in6> &observers,
-                                std::map<uint64_t, uint16_t> &client_poll_position,
-                                std::map<uint64_t, std::string> &player_ids,
+    void kick_timeouted_clients(pollfd *poll_arr, std::map<std::string, player_info_t> &players,
+                                std::set<client_id_t> &observers,
+                                std::map<client_id_t, uint16_t> &client_poll_position,
+                                std::map<client_id_t, std::string> &player_ids,
                                 bool game_in_progress, int &ready_players) {
         for (int i = 2; i < CLIENT_MAX; i++) {
             if (poll_arr[i].revents & POLLIN) {
@@ -447,30 +468,30 @@ namespace {
                 poll_arr[i].revents = 0;
                 std::cout << "disconnecting client\n";
                 poll_arr[i].fd = -1;
-                uint64_t client_session_id;
+                client_id_t client_id;
                 for (std::pair pair : client_poll_position) {
                     if (pair.second == i) {
                         std::cout << "znaleziono delikwenta\n";
-                        client_session_id = pair.first;
+                        client_id = pair.first;
                         break;
                     }
                 }
-                if (observers.find(client_session_id) != observers.end()) {
+                if (observers.find(client_id) != observers.end()) {
                     // wywalamy observera
-                    observers.erase(client_session_id);
+                    observers.erase(client_id);
                 } else {
                     // wywalamy gracza
-                    std::string name = player_ids[client_session_id];
-                    player_info &player = players[name];
+                    std::string name = player_ids[client_id];
+                    player_info_t &player = players[name];
                     player.disconnected = true;
                     if (!game_in_progress) {
                         if (player.ready)
                             ready_players--;
-                        player_ids.erase(client_session_id);
+                        player_ids.erase(client_id);
                         players.erase(name);
                     }
                 }
-                client_poll_position.erase(client_session_id);
+                client_poll_position.erase(client_id);
             }
         }
     }
@@ -483,11 +504,12 @@ int main(int argc, char *argv[]) {
     get_args(argc, argv);
 
     uint32_t game_id;
-    std::map<std::string, player_info> players; // mapujemy nazwę do informacji
+    std::map<std::string, player_info_t> players; // mapujemy nazwę do informacji
     int ready_players = 0;
-    std::map<uint64_t, sockaddr_in6> observers; // session id do adresu
-    std::map<uint64_t, uint16_t> client_poll_position; // pun not intended, session id do pozycji w pollu
-    std::map<uint64_t, std::string> player_ids; // session id do nazwy gracza
+    //std::map<uint64_t, sockaddr_in6> observers; // session id do adresu
+    std::set<client_id_t> observers;
+    std::map<client_id_t, uint16_t> client_poll_position; // pun not intended, session id do pozycji w pollu
+    std::map<client_id_t, std::string> player_ids; // session id do nazwy gracza
     std::vector<bool> board;
     board.resize(board_width * board_height);
     std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> game_events;
@@ -570,6 +592,11 @@ int main(int argc, char *argv[]) {
                 uint32_t expected_event_no = be32toh(in_msg.next_expected_event_no);
                 uint8_t turn_direction = in_msg.turn_direction;
 
+                in_port_t client_port = client_address.sin6_port;
+                in6_addr client_addr = client_address.sin6_addr;
+
+                client_id_t client_id = {session_id, client_port, client_addr};
+
                 std::cout << "id: " << session_id << " expected event: " << expected_event_no << " direction: " << (int)turn_direction << std::endl;
                 std::string name;
                 bool invalid_msg = false;
@@ -589,16 +616,16 @@ int main(int argc, char *argv[]) {
                 if (name.empty()) {
                     std::cout << "OBSERWATOR\n";
                     /* obserwator */
-                    if (observers.find(session_id) == observers.end()) {
+                    if (observers.find(client_id) == observers.end()) {
                         /* nowy obserwator */
-                        observers.insert(std::pair(session_id, client_address));
+                        observers.insert(client_id);
 
                         send_history(expected_event_no, client_address, buf, game_events);
 
                         for (int i = 2; i < CLIENT_MAX; i++) {
                             if (poll_arr[i].fd == -1) {
                                 create_timer(poll_arr[i].fd, TIMER_TIMEOUT, -1);
-                                client_poll_position.insert(std::pair(session_id, i));
+                                client_poll_position.insert(std::pair(client_id, i));
                                 break;
                             }
                         }
@@ -607,7 +634,7 @@ int main(int argc, char *argv[]) {
                         /* stary obserwator */
                         send_history(expected_event_no, client_address, buf, game_events);
 
-                        int poll_position = client_poll_position[session_id];
+                        int poll_position = client_poll_position[client_id];
                         update_timer(poll_arr[poll_position]);
                     }
                     continue;
@@ -616,12 +643,12 @@ int main(int argc, char *argv[]) {
                 if (players.find(name) == players.end()) {
                     /* nowy gracz */
                     std::cout << "NOWY GRACZ\n";
-                    if (player_ids.find(session_id) != player_ids.end())
+                    if (player_ids.find(client_id) != player_ids.end())
                         continue;   // ignorujemy, znana sesja nie może ot tak zmienić nazwy gracza
 
-                    player_ids.insert(std::pair(session_id, name));
-                    player_info new_player_info{false, -1, session_id, false,false,
-                                                0, 0, 0, turn_direction, client_address};
+                    player_ids.insert(std::pair(client_id, name));
+                    player_info_t new_player_info{false, -1, client_id, false, false,
+                                                  0, 0, 0, turn_direction, client_address};
 
                     if (new_player_info.turn_direction != 0) {
                         new_player_info.ready = true;
@@ -635,7 +662,7 @@ int main(int argc, char *argv[]) {
                     for (int i = 2; i < CLIENT_MAX; i++) {
                         if (poll_arr[i].fd == -1) {
                             create_timer(poll_arr[i].fd, TIMER_TIMEOUT, -1);
-                            client_poll_position.insert(std::pair(session_id, i));
+                            client_poll_position.insert(std::pair(client_id, i));
                             break;
                         }
                     }
@@ -643,19 +670,19 @@ int main(int argc, char *argv[]) {
                 else {
                     /* znany gracz */
                     std::cout << "ZNANY GRACZ\n";
-                    player_info &player = players[name];
-                    if (session_id < player.id || players[name].disconnected)
+                    player_info_t &player = players[name];
+                    if (session_id < player.id.session_id || players[name].disconnected)
                         continue;
                     else {
                         // update id i związanych struktur danych
-                        int64_t old_id = player.id;
+                        client_id_t &old_id = player.id;
                         int16_t poll_position = client_poll_position[old_id];
-                        player.id = session_id;
+                        player.id = client_id;
 
                         client_poll_position.erase(old_id);
-                        client_poll_position.insert(std::pair(session_id, poll_position));
+                        client_poll_position.insert(std::pair(client_id, poll_position));
                         player_ids.erase(old_id);
-                        player_ids.insert(std::pair(session_id, name));
+                        player_ids.insert(std::pair(client_id, name));
                     }
 
                     player.turn_direction = turn_direction;
@@ -663,7 +690,7 @@ int main(int argc, char *argv[]) {
                         player.ready = true;
                         ready_players++;
                     }
-                    int poll_position = client_poll_position[session_id];
+                    int poll_position = client_poll_position[client_id];
                     update_timer(poll_arr[poll_position]);
 
                     send_history(expected_event_no, client_address, buf, game_events);
@@ -702,7 +729,7 @@ int main(int argc, char *argv[]) {
                 std::cout << "\n\n GAME OVER \n\n";
                 game_events.clear();
                 for (auto &pair : players) {
-                    player_info &player = pair.second;
+                    player_info_t &player = pair.second;
                     std::cout << pair.first << std::endl;
                     player.ready = false;
                     player.in_game = false;
