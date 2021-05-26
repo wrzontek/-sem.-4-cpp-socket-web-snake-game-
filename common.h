@@ -26,8 +26,7 @@
 
 #define DATAGRAM_MAX_SIZE 30000
 // todo ^^ może inne
-#define CLIENT_TIMEOUT_SECONDS 5
-// todo ^^ na 2
+#define CLIENT_TIMEOUT_SECONDS 2
 
 #define TIMER_ROUND 0
 #define TIMER_TIMEOUT 1
@@ -67,7 +66,7 @@ struct __attribute__((__packed__)) event_new_game {
 
     uint32_t maxx;
     uint32_t maxy;
-    uint8_t list_and_crc[MAX_NAME_LEN * MAX_PLAYERS + 4];
+    uint8_t list_and_crc[(MAX_NAME_LEN + 1) * MAX_PLAYERS + 4];
 };
 
 struct __attribute__((__packed__)) event_pixel {

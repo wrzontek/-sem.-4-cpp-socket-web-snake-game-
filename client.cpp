@@ -20,6 +20,7 @@
 namespace {
     uint64_t session_id;
     uint32_t expected_event_no = 0;
+    uint32_t last_event_no = 0; // event 0 nigdy nie bedzie game_overem, 0 tutaj to placeholder
     uint8_t turn_direction = 0;
     uint32_t maxx, maxy, player_count;
     int last_key_down = 0;
@@ -41,10 +42,10 @@ namespace {
                 case 'n':
                     player_name = optarg;
                     if (player_name.length() > 20)
-                        fatal("player name too long");
+                        fatal("player name argument too long");
                     for (char c : player_name)
                         if (c > 126 || c < 33)
-                            fatal("invalid characters in player name");
+                            fatal("invalid characters in player name argument");
                     break;
                 case 'p':
                     server_port = optarg;
@@ -127,7 +128,7 @@ namespace {
         freeaddrinfo(addr_gui_result);
 
         int on = 1;
-        setsockopt(gui_sock, IPPROTO_TCP, TCP_NODELAY,
+        setsockopt(gui_sock, IPPROTO_TCP, TCP_NODELAY,  // wyłączenie algorytmu Nagle'a
                    (char *) &on, sizeof(int));
 
         if (fcntl(gui_sock, F_SETFL, fcntl(gui_sock, F_GETFL, 0) | O_NONBLOCK) == -1)
@@ -152,15 +153,19 @@ namespace {
 
         std::size_t pos = buf_str.find('\n');
         if (pos == std::string::npos) {
-            // nie znaleziono \n, spróbujmy doczytać
+            // nie znaleziono \n
+            if (buf_str.size() > sizeof("RIGHT_KEY_DOWN\n"))
+                return "bad command";
+            // spróbujmy doczytać
             memset(command_buf, 0, COMMAND_BUF_SIZE);
             ssize_t len = read(gui_sock, command_buf, COMMAND_BUF_SIZE);
             if (len <= 0)
-                return "";
+                return buf_str; // nie udało się doczytać, wysyłamy co mamy
 
             buf_str += std::string(command_buf, len);    // dodajemy do bufora nowo wczytaną porcję
             return my_getline(buf_str, command_buf);
-        } else {
+        }
+        else {
             std::string line = buf_str.substr(0, pos);
             buf_str.erase(0, pos + 1);
             return line;
@@ -173,6 +178,12 @@ namespace {
             std::string msg_to_gui = pair->second;
 
             write(socket, msg_to_gui.data(), msg_to_gui.size());
+
+            if (last_event_no != 0 && expected_event_no == last_event_no) {
+                // wysłaliśmy właśnie ostatni event w tej rozgrywce
+                expected_event_no = 0;
+                last_event_no = 0;
+            }
 
             expected_event_no++;
             ready_messages.erase(pair);
@@ -188,7 +199,7 @@ namespace {
         maxx = be32toh(*(uint32_t *) (event_buf + 9));
         maxy = be32toh(*(uint32_t *) (event_buf + 13));
 
-        if (maxx > 9999 || maxy > 9999) { // todo
+        if (maxx > BOARD_WIDTH_MAX || maxy > BOARD_HEIGHT_MAX) {
             std::cerr << "board too large\n";
             exit(1);
         }
@@ -200,7 +211,7 @@ namespace {
         int new_player_number = 0;
         std::string new_player_name;
         while (true) {
-            if (i > len - 13) { // todo może 14
+            if (i >= len - 13) {
                 std::cerr << "player name list not null terminated\n";
                 exit(1);
             }
@@ -337,7 +348,8 @@ int main(int argc, char *argv[]) {
                     }
                     else if (event_type == TYPE_GAME_OVER) {
                         std::cout << "GAME OVER\n";
-                        expected_event_no = 0;
+                        // gdy wyślemy last_event_no do gui to będzie faktyczny koniec gry z naszego punktu widzenia
+                        last_event_no = event_no;
                     }
                     else if (event_type == TYPE_PIXEL) {
                         std::cout << "PIXEL\n";
@@ -345,13 +357,19 @@ int main(int argc, char *argv[]) {
                     }
                     else {
                         std::cout << "UNKNOWN, ignoring\n";
-                        break;
                     }
 
                     std::cout << msg_to_gui;
                     if (event_no == expected_event_no) {
                         std::cout << "EVENT == EXPECTED, SENDING\n";
                         write(poll_arr[1].fd, msg_to_gui.data(), msg_to_gui.size());
+
+                        if (last_event_no != 0 && expected_event_no == last_event_no) {
+                            // wysłaliśmy właśnie ostatni event w tej rozgrywce
+                            expected_event_no = 0;
+                            last_event_no = 0;
+                        }
+
                         expected_event_no++;
                         send_ready_messages(poll_arr[1].fd, ready_messages);
                     }
@@ -385,7 +403,7 @@ int main(int argc, char *argv[]) {
 
                     std::cout << ret << " " << command << std::endl;
 
-                    if (command.empty())
+                    if (command.empty() || command == "bad command")
                         break;
 
                     if (command == "LEFT_KEY_DOWN") {

@@ -14,7 +14,6 @@
 #include <variant>
 #include <sys/timerfd.h>
 #include "common.h"
-#include <cassert>
 
 #define DEFAULT_TURNING_SPEED 6
 #define DEFAULT_ROUNDS_PER_SEC 50
@@ -107,7 +106,6 @@ namespace {
             if (pair2.second.in_game)
                 alive_players++;
         }
-        assert(alive_players > 0);
 
         return alive_players == 1;
     }
@@ -316,7 +314,7 @@ namespace {
 
     void send_history(uint32_t expected_event_no, sockaddr_in6 client_address, std::vector<int8_t> &buf_vector,
                       std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> &game_events) {
-        static char event_buf[550];
+        static char event_buf[sizeof(event_new_game)];  // na jeden event, new_game to największy możliwy
 
         if (expected_event_no < game_events.size()) {
             std::cout << "SENDING HISTORY!!!\n";
@@ -330,15 +328,18 @@ namespace {
                     uint32_t len = htobe32(new_game.len);
                     memcpy(event_buf, (const char *) &new_game, len + 8);
                     size = (int) len + 8;
-                } else if (auto pixel_p = std::get_if<event_pixel>(&event_variant)) {
+                }
+                else if (auto pixel_p = std::get_if<event_pixel>(&event_variant)) {
                     event_pixel pixel = *pixel_p;
                     memcpy(event_buf, (const char *) &pixel, sizeof(pixel));
                     size = sizeof(event_pixel);
-                } else if (auto elim_p = std::get_if<event_player_eliminated>(&event_variant)) {
+                }
+                else if (auto elim_p = std::get_if<event_player_eliminated>(&event_variant)) {
                     event_player_eliminated elim = *elim_p;
                     memcpy(event_buf, (const char *) &elim, sizeof(elim));
                     size = sizeof(event_player_eliminated);
-                } else if (auto game_over_p = std::get_if<event_game_over>(&event_variant)) {
+                }
+                else if (auto game_over_p = std::get_if<event_game_over>(&event_variant)) {
                     event_game_over game_over = *game_over_p;
                     memcpy(event_buf, (const char *) &game_over, sizeof(game_over));
                     size = sizeof(event_game_over);
@@ -347,7 +348,8 @@ namespace {
                 if (total_size + size <= DATAGRAM_MAX_SIZE) {
                     memcpy(buf_vector.data() + total_size, event_buf, size);
                     total_size += size;
-                } else {
+                }
+                else {
                     sendto(client_socket, (char *) buf_vector.data(), total_size, 0,
                            (sockaddr *) (&client_address), sizeof(client_address));
 
@@ -371,17 +373,18 @@ namespace {
                                 std::map<uint64_t, sockaddr_in6> &observers,
                                 std::map<uint64_t, uint16_t> &client_poll_position,
                                 std::map<uint64_t, std::string> &player_ids,
-                                bool game_in_progress) {
+                                bool game_in_progress, int &ready_players) {
         for (int i = 2; i < CLIENT_MAX; i++) {
             if (poll_arr[i].revents & POLLIN) {
                 uint64_t exp;
                 read(poll_arr[i].fd, &exp, sizeof(uint64_t));
                 poll_arr[i].revents = 0;
-                std::cout << "disconnecting poll_arr\n";
+                std::cout << "disconnecting client\n";
                 poll_arr[i].fd = -1;
                 uint64_t client_session_id;
                 for (std::pair pair : client_poll_position) {
                     if (pair.second == i) {
+                        std::cout << "znaleziono delikwenta\n";
                         client_session_id = pair.first;
                         break;
                     }
@@ -395,10 +398,13 @@ namespace {
                     player_info &player = players[name];
                     player.disconnected = true;
                     if (!game_in_progress) {
+                        if (player.ready)
+                            ready_players--;
                         player_ids.erase(client_session_id);
                         players.erase(name);
                     }
                 }
+                client_poll_position.erase(client_session_id);
             }
         }
     }
@@ -413,9 +419,9 @@ int main(int argc, char *argv[]) {
     uint32_t game_id;
     std::map<std::string, player_info> players; // mapujemy nazwę do informacji
     int ready_players = 0;
-    std::map<uint64_t, sockaddr_in6> observers;
-    std::map<uint64_t, uint16_t> client_poll_position; // pun not intended
-    std::map<uint64_t, std::string> player_ids;
+    std::map<uint64_t, sockaddr_in6> observers; // session id do adresu
+    std::map<uint64_t, uint16_t> client_poll_position; // pun not intended, session id do pozycji w pollu
+    std::map<uint64_t, std::string> player_ids; // session id do nazwy gracza
     std::vector<bool> board;
     board.resize(board_width * board_height);
     std::vector<std::variant<event_new_game, event_pixel, event_player_eliminated, event_game_over>> game_events;
@@ -428,15 +434,14 @@ int main(int argc, char *argv[]) {
     */
 
     pollfd poll_arr[CLIENT_MAX];
-    sockaddr_in6 serveraddr{};
-    sockaddr_in6 client_address{};
-
     for (int i = 0; i < CLIENT_MAX; i++) {
         poll_arr[i].fd = -1;
         poll_arr[i].events = POLLIN;
         poll_arr[i].revents = 0;
     }
 
+    sockaddr_in6 serveraddr{};
+    sockaddr_in6 client_address{};
     create_timer(poll_arr[1].fd, TIMER_ROUND, rounds_per_sec);
 
     client_socket = poll_arr[0].fd = socket(PF_INET6, SOCK_DGRAM, 0);
@@ -471,7 +476,7 @@ int main(int argc, char *argv[]) {
     while (true) { // pracujemy aż coś się mocno nie zepsuje
         int ret = poll(poll_arr, CLIENT_MAX, -1);
 
-        if (ret <= 0) // zawsze będzie budzić poll co najmniej timer tury
+        if (ret <= 0) // zawsze powinien nas budzić co najmniej timer tury
             syserr("poll or timer");
 
         if (poll_arr[0].revents & POLLIN) {
@@ -482,7 +487,8 @@ int main(int argc, char *argv[]) {
              * masą połączęń i odłączeń obserwatorów którym trzeba wysłać sporą historię */
             for (int t = 0; t < MAX_CONSECUTIVE_CLIENT_MSG; t++) {
                 socklen_t rcva_len = (socklen_t) sizeof(client_address);
-                ret = recvfrom(poll_arr[0].fd, ((char *) &in_msg), sizeof(client_msg), 0,
+                memset(&in_msg, 0, sizeof(client_msg));
+                ret = recvfrom(poll_arr[0].fd, (char *) &in_msg, sizeof(client_msg), 0,
                                (struct sockaddr *) &client_address, &rcva_len);
 
                 if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
@@ -491,14 +497,14 @@ int main(int argc, char *argv[]) {
                     break;
                 }
 
-                if (in_msg.turn_direction > 2)
+                if (ret != sizeof(client_msg) || in_msg.turn_direction > 2)
                     continue;
 
-                uint64_t session_id = in_msg.session_id = be64toh(in_msg.session_id);
-                uint32_t next_event = in_msg.next_expected_event_no = be32toh(in_msg.next_expected_event_no);
+                uint64_t session_id = be64toh(in_msg.session_id);
+                uint32_t expected_event_no = be32toh(in_msg.next_expected_event_no);
                 uint8_t turn_direction = in_msg.turn_direction;
 
-                std::cout << "id: " << session_id << " expected event: " << next_event << " direction: " << (int)turn_direction << std::endl;
+                std::cout << "id: " << session_id << " expected event: " << expected_event_no << " direction: " << (int)turn_direction << std::endl;
                 std::string name;
                 bool invalid_msg = false;
                 for (int i = 0; i < ret - 13; i++) {
@@ -521,7 +527,7 @@ int main(int argc, char *argv[]) {
                         /* nowy obserwator */
                         observers.insert(std::pair(session_id, client_address));
 
-                        send_history(next_event, client_address, buf, game_events);
+                        send_history(expected_event_no, client_address, buf, game_events);
 
                         for (int i = 2; i < CLIENT_MAX; i++) {
                             if (poll_arr[i].fd == -1) {
@@ -530,9 +536,10 @@ int main(int argc, char *argv[]) {
                                 break;
                             }
                         }
-                    } else {
+                    }
+                    else {
                         /* stary obserwator */
-                        send_history(next_event, client_address, buf, game_events);
+                        send_history(expected_event_no, client_address, buf, game_events);
 
                         int poll_position = client_poll_position[session_id];
                         update_timer(poll_arr[poll_position]);
@@ -557,7 +564,7 @@ int main(int argc, char *argv[]) {
 
                     players.insert(std::pair(name, new_player_info));
 
-                    send_history(next_event, client_address, buf, game_events);
+                    send_history(expected_event_no, client_address, buf, game_events);
 
                     for (int i = 2; i < CLIENT_MAX; i++) {
                         if (poll_arr[i].fd == -1) {
@@ -566,7 +573,8 @@ int main(int argc, char *argv[]) {
                             break;
                         }
                     }
-                } else {
+                }
+                else {
                     /* znany gracz */
                     std::cout << "ZNANY GRACZ\n";
                     player_info &player = players[name];
@@ -575,11 +583,11 @@ int main(int argc, char *argv[]) {
                     else {
                         // update id i związanych struktur danych
                         int64_t old_id = player.id;
-                        int16_t pp = client_poll_position[old_id];
+                        int16_t poll_position = client_poll_position[old_id];
                         player.id = session_id;
 
                         client_poll_position.erase(old_id);
-                        client_poll_position.insert(std::pair(session_id, pp));
+                        client_poll_position.insert(std::pair(session_id, poll_position));
                         player_ids.erase(old_id);
                         player_ids.insert(std::pair(session_id, name));
                     }
@@ -592,17 +600,16 @@ int main(int argc, char *argv[]) {
                     int poll_position = client_poll_position[session_id];
                     update_timer(poll_arr[poll_position]);
 
-                    send_history(next_event, client_address, buf, game_events);
+                    send_history(expected_event_no, client_address, buf, game_events);
                 }
             }
         }
 
-        // iteracja po timerach graczy
-        kick_timeouted_clients(poll_arr, players, observers, client_poll_position, player_ids, game_in_progress);
-
+        kick_timeouted_clients(poll_arr, players, observers, client_poll_position,
+                               player_ids, game_in_progress, ready_players);
 
         if (poll_arr[1].revents & POLLIN) {
-            /* Czas przeliczyć turę bądź sprawdzić czy zaczynamy grę */
+            /* Czas przeliczyć turę */
             std::cout << "TURA\n";
             uint64_t exp;
             read(poll_arr[1].fd, &exp, sizeof(uint64_t));
@@ -615,15 +622,15 @@ int main(int argc, char *argv[]) {
                 init_game(game_id, players, observers, board, game_events, game_in_progress);
             }
 
-            bool player_in_game = false;
+            bool any_player_in_game = false;
             for (auto &pair : players) {
                 if (pair.second.in_game) {
-                    player_in_game = true;
+                    any_player_in_game = true;
                     break;
                 }
             }
 
-            if (!game_in_progress && player_in_game) {
+            if (!game_in_progress && any_player_in_game) {
                 // gra się właśnie zakończyła
                 std::cout << "\n\n GAME OVER \n\n";
                 game_events.clear();
@@ -636,15 +643,13 @@ int main(int argc, char *argv[]) {
                         std::cout << pair.first << std::endl;
                         poll_arr[client_poll_position[player.id]].fd = -1;
                         client_poll_position.erase(player.id);
-                        players.erase(player_ids[player.id]);
+                        players.erase(pair.first);
                         player_ids.erase(player.id);
                     }
-                    std::cout << pair.first << std::endl;
                 }
                 ready_players = 0;
             }
         }
-
     }
 #pragma clang diagnostic pop
     return 0;
